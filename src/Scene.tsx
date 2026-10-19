@@ -1,7 +1,7 @@
-import { useEffect, useRef, type ComponentRef } from 'react'
+import { useEffect, useRef, type ComponentRef, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { MOUSE, Plane, Vector2, Vector3 } from 'three'
+import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
 import Furniture from './Furniture'
 import {
@@ -9,11 +9,64 @@ import {
   validatePlacement,
   worldPose,
   surfaceLocal,
-  catalog,
   isSmall,
+  drawerSpecs,
+  support,
+  DRAWER_TRAVEL,
   type Item,
 } from './placement'
 import type { Mode, Interaction } from './history'
+import { approach } from './history'
+import {
+  isEditing,
+  movement,
+  keyboardPlacement,
+  inputOwner,
+  smoothAxis,
+} from './controls'
+
+// Drawer mesh and contents read a single animation value. Closing hides meshes
+// and picking targets; attachment records stay in the history unchanged.
+function StoredContents({
+  item,
+  parent,
+  children,
+  transporting,
+  motion,
+}: {
+  item: Item
+  parent?: Item
+  children: ReactNode
+  transporting: boolean
+  motion: Map<string, number>
+}) {
+  const target =
+    parent &&
+    item.drawerIndex !== undefined &&
+    parent.drawers?.[item.drawerIndex] &&
+    !transporting
+      ? DRAWER_TRAVEL
+      : 0
+  const group = useRef<Group>(null)
+  useFrame(() => {
+    if (!group.current) return
+    const angle = ((parent?.rotation ?? 0) * Math.PI) / 2
+    const offset =
+      item.drawerIndex === undefined
+        ? 0
+        : (motion.get(`${parent?.id}:${item.drawerIndex}`) ?? 0) - target
+    group.current.position.set(
+      Math.sin(angle) * offset,
+      0,
+      Math.cos(angle) * offset,
+    )
+  })
+  return (
+    <group ref={group}>
+      {item.drawerIndex === undefined || target > 0 ? children : null}
+    </group>
+  )
+}
 
 type Props = {
   items: Item[]
@@ -53,6 +106,83 @@ function Interior(p: Props) {
   } | null>(null)
   const current = useRef(p)
   current.current = p
+  const keys = useRef(new Set<string>())
+  const keyboardRaw = useRef<{ raw: Item; preview: Item } | null>(null)
+  const cameraVelocity = useRef(new Vector3())
+  const drawerMotion = useRef(new Map<string, number>())
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.05),
+      props = current.current,
+      orbit = controls.current
+    for (const parent of props.items) {
+      drawerSpecs(parent).forEach((_, index) => {
+        const key = `${parent.id}:${index}`
+        const target =
+          props.draft?.id !== parent.id && parent.drawers?.[index]
+            ? DRAWER_TRAVEL
+            : 0
+        drawerMotion.current.set(
+          key,
+          approach(drawerMotion.current.get(key) ?? 0, target, dt, 12),
+        )
+      })
+    }
+    if (!orbit) return
+    if (isEditing(document.activeElement)) keys.current.clear()
+    const forward = camera.getWorldDirection(new Vector3()).setY(0).normalize()
+    const direction = movement(keys.current, forward)
+    const precise =
+      keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
+    if (inputOwner(props.draft) === 'furniture') {
+      cameraVelocity.current.set(0, 0, 0)
+      if (props.draft && (direction.x || direction.z)) {
+        let active = props.draft
+        if (keyboardRaw.current?.preview === active)
+          active = keyboardRaw.current.raw
+        let dx = direction.x * dt * (precise ? 0.18 : 1.4),
+          dz = direction.z * dt * (precise ? 0.18 : 1.4)
+        const parent = props.items.find((i) => i.id === active.surfaceId)
+        if (parent) {
+          const local = surfaceLocal({ ...parent, x: 0, z: 0 }, dx, dz)
+          dx = local.x
+          dz = local.z
+        }
+        keyboardRaw.current = keyboardPlacement(active, dx, dz, props.items)
+        props.onDraft(keyboardRaw.current.preview)
+        if (drag.current) drag.current.draft = keyboardRaw.current.preview
+      }
+    } else {
+      keyboardRaw.current = null
+      const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
+        precise ? 6 : 2.5,
+      )
+      const x = smoothAxis(cameraVelocity.current.x, desired.x, dt),
+        z = smoothAxis(cameraVelocity.current.z, desired.z, dt)
+      cameraVelocity.current.set(x.velocity, 0, z.velocity)
+      const shift = new Vector3(x.distance, 0, z.distance)
+      camera.position.add(shift)
+      orbit.target.add(shift)
+      const turn =
+        Number(keys.current.has('KeyQ')) - Number(keys.current.has('KeyE'))
+      if (turn)
+        camera.position
+          .sub(orbit.target)
+          .applyAxisAngle(new Vector3(0, 1, 0), turn * dt * 1.1)
+          .add(orbit.target)
+    }
+    orbit.update()
+    // Clamp after damping as well: residual mouse pan must not escape bounds.
+    const bounded = orbit.target
+      .clone()
+      .clamp(new Vector3(-4, 0, -3), new Vector3(4, 0, 3))
+    camera.position.add(bounded.clone().sub(orbit.target))
+    orbit.target.copy(bounded)
+    gl.domElement.dataset.camera = JSON.stringify({
+      position: camera.position.toArray(),
+      target: orbit.target.toArray(),
+      zoom: camera.zoom,
+    })
+  })
   const plane = useRef(new Plane(new Vector3(0, 1, 0), 0))
   const pointAt = (x: number, y: number, height = 0) => {
     const rect = gl.domElement.getBoundingClientRect()
@@ -81,31 +211,45 @@ function Interior(p: Props) {
     const orientation = worldPose(item, props.items).rotation
     let nearest: { item: Item; distance: number } | null = null
     for (const parent of props.items) {
-      const surface = catalog[parent.kind].surface
-      if (!surface) continue
-      const hit = raycaster.ray.intersectPlane(
-        new Plane(new Vector3(0, 1, 0), -surface.height),
-        new Vector3(),
-      )
-      if (!hit) continue
-      const underCursor = surfaceLocal(parent, hit.x, hit.z)
-      if (
-        Math.abs(underCursor.x) > surface.size[0] / 2 ||
-        Math.abs(underCursor.z) > surface.size[1] / 2
-      )
-        continue
-      const local = surfaceLocal(parent, hit.x - offset.x, hit.z - offset.z),
-        distance = hit.distanceToSquared(raycaster.ray.origin)
-      if (!nearest || distance < nearest.distance)
-        nearest = {
-          item: {
-            ...item,
-            ...local,
-            surfaceId: parent.id,
-            rotation: (orientation - parent.rotation + 4) % 4,
-          },
-          distance,
-        }
+      const destinations = [
+        undefined,
+        ...drawerSpecs(parent).map((_, index) => index),
+      ]
+      for (const drawerIndex of destinations) {
+        const surface = support({ ...item, drawerIndex }, parent)
+        if (!surface || !surface.open) continue
+        if (drawerIndex !== undefined)
+          surface.center =
+            drawerSpecs(parent)[drawerIndex].center +
+            (drawerMotion.current.get(`${parent.id}:${drawerIndex}`) ?? 0)
+        const hit = raycaster.ray.intersectPlane(
+          new Plane(new Vector3(0, 1, 0), -surface.height),
+          new Vector3(),
+        )
+        if (!hit) continue
+        const underCursor = surfaceLocal(parent, hit.x, hit.z)
+        underCursor.z -= surface.center
+        const reach = drawerIndex === undefined ? 0 : 0.14
+        if (
+          Math.abs(underCursor.x) > surface.size[0] / 2 + reach ||
+          Math.abs(underCursor.z) > surface.size[1] / 2 + reach
+        )
+          continue
+        const local = surfaceLocal(parent, hit.x - offset.x, hit.z - offset.z),
+          distance = hit.distanceToSquared(raycaster.ray.origin)
+        local.z -= surface.center
+        if (!nearest || distance < nearest.distance)
+          nearest = {
+            item: {
+              ...item,
+              ...local,
+              surfaceId: parent.id,
+              drawerIndex,
+              rotation: (orientation - parent.rotation + 4) % 4,
+            },
+            distance,
+          }
+      }
     }
     return (
       nearest?.item ??
@@ -115,18 +259,32 @@ function Interior(p: Props) {
             x: floor.x - offset.x,
             z: floor.z - offset.z,
             surfaceId: undefined,
+            drawerIndex: undefined,
             rotation: orientation,
           }
         : null)
     )
   }
   const cancelGesture = useRef(() => {})
-  useEffect(() => {
+  const resetView = useRef(() => {})
+  resetView.current = () => {
+    const orbit = controls.current
+    if (orbit) {
+      orbit.enableDamping = false
+      orbit.reset()
+    }
     camera.position.set(12, 11, 15)
     camera.zoom = fitZoom
     camera.updateProjectionMatrix()
-    controls.current?.target.set(0, 0, 0)
-    controls.current?.update()
+    cameraVelocity.current.set(0, 0, 0)
+    if (orbit) {
+      orbit.target.set(0, 0, 0)
+      orbit.update()
+      orbit.enableDamping = true
+    }
+  }
+  useEffect(() => {
+    resetView.current()
   }, [p.resetCamera, camera, fitZoom])
   useEffect(() => {
     const cancel = () => {
@@ -206,12 +364,48 @@ function Interior(p: Props) {
       cancel()
     }
     const key = (e: KeyboardEvent) => {
+      if (isEditing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (
+        [
+          'KeyW',
+          'KeyA',
+          'KeyS',
+          'KeyD',
+          'KeyQ',
+          'KeyE',
+          'ShiftLeft',
+          'ShiftRight',
+        ].includes(e.code)
+      ) {
+        keys.current.add(e.code)
+        e.preventDefault()
+      }
+      if (e.code === 'Home') {
+        resetView.current()
+        e.preventDefault()
+      }
+      if (e.code === 'Enter' && current.current.draft) {
+        const candidate = current.current.draft
+        const error = validatePlacement(candidate, current.current.items)
+        if (error) current.current.onMessage(error)
+        else {
+          current.current.onCommit(candidate)
+          cancel()
+        }
+        e.preventDefault()
+      }
       if (e.key === 'Escape') cancel()
+    }
+    const release = (e: KeyboardEvent) => keys.current.delete(e.code)
+    const blur = () => {
+      keys.current.clear()
+      cameraVelocity.current.set(0, 0, 0)
+      cancel()
     }
     // Capture before R3F raycasting: selected rugs remain placeable under furniture.
     const place = (e: PointerEvent) => {
       const props = current.current
-      if (!props.placing || e.button !== 0) return
+      if (!props.placing || e.button !== 0 || e.buttons !== 1) return
       e.stopImmediatePropagation()
       e.preventDefault()
       const item = props.items.find((i) => i.id === props.selected)
@@ -232,22 +426,24 @@ function Interior(p: Props) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', cancel)
-    window.addEventListener('blur', cancel)
+    window.addEventListener('blur', blur)
     window.addEventListener('keydown', key)
+    window.addEventListener('keyup', release)
     return () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', cancel)
-      window.removeEventListener('blur', cancel)
+      window.removeEventListener('blur', blur)
       window.removeEventListener('keydown', key)
+      window.removeEventListener('keyup', release)
       gl.domElement.removeEventListener('pointerdown', place, true)
     }
-  }, [camera, gl, raycaster])
+  }, [camera, gl, raycaster, fitZoom])
   useEffect(() => {
     cancelGesture.current()
   }, [p.cancelToken])
   function down(e: ThreeEvent<PointerEvent>, shown: Item) {
-    if (e.button !== 0) return
+    if (e.button !== 0 || e.buttons !== 1) return
     if (p.placing) return
     e.stopPropagation()
     const item = p.items.find((i) => i.id === shown.id)!
@@ -257,13 +453,22 @@ function Interior(p: Props) {
       else if (item.kind === 'lamp') p.onInteract(item.id, { kind: 'lamp' })
       else
         p.onMessage(
-          item.kind === 'cabinet'
+          drawerSpecs(item).length > 0
             ? 'Нажмите на нужный ящик или используйте кнопки'
             : 'Для переноса включите режим «Перемещение»',
         )
       return
     }
     const world = worldPose(item, p.items)
+    if (item.drawerIndex !== undefined) {
+      const parent = p.items.find((i) => i.id === item.surfaceId)!
+      const offset =
+        (drawerMotion.current.get(`${parent.id}:${item.drawerIndex}`) ?? 0) -
+        DRAWER_TRAVEL
+      const angle = (parent.rotation * Math.PI) / 2
+      world.x += Math.sin(angle) * offset
+      world.z += Math.cos(angle) * offset
+    }
     const hit = pointAt(e.clientX, e.clientY, world.y)
     if (!hit) return
     p.onSelect(item.id)
@@ -299,24 +504,44 @@ function Interior(p: Props) {
       <House walls={p.walls} />
       {/** Children resolve against the preview parent so attachments move atomically. */}
       {p.items.map((item) => {
-        const shown = p.draft?.id === item.id ? p.draft : item
         const shownItems = p.draft
-          ? p.items.map((i) => (i.id === p.draft!.id ? p.draft! : i))
+          ? p.items.map((i) =>
+              i.id === p.draft!.id
+                ? {
+                    ...p.draft!,
+                    drawers: [false, false, false] as [
+                      boolean,
+                      boolean,
+                      boolean,
+                    ],
+                  }
+                : i,
+            )
           : p.items
+        const shown = shownItems.find((i) => i.id === item.id)!
+        const parent = shownItems.find((i) => i.id === shown.surfaceId)
         return (
-          <Furniture
+          <StoredContents
             key={item.id}
-            item={worldPose(shown, shownItems)}
-            selected={p.selected === item.id}
-            invalid={!!validatePlacement(shown, p.items)}
-            onDown={down}
-            mode={p.mode}
-            transporting={p.draft?.id === item.id}
-            onInteract={(action) => {
-              p.onSelect(item.id)
-              p.onInteract(item.id, action)
-            }}
-          />
+            item={shown}
+            parent={parent}
+            transporting={p.draft?.id === parent?.id}
+            motion={drawerMotion.current}
+          >
+            <Furniture
+              key={item.id}
+              item={worldPose(shown, shownItems)}
+              selected={p.selected === item.id}
+              invalid={!!validatePlacement(shown, p.items)}
+              onDown={down}
+              mode={p.mode}
+              drawerMotion={drawerMotion.current}
+              onInteract={(action) => {
+                p.onSelect(item.id)
+                p.onInteract(item.id, action)
+              }}
+            />
+          </StoredContents>
         )
       })}
       <OrbitControls
@@ -325,12 +550,13 @@ function Interior(p: Props) {
         enableDamping
         minZoom={Math.min(25, fitZoom * 0.65)}
         maxZoom={95}
-        minPolarAngle={0.2}
-        maxPolarAngle={Math.PI / 2.15}
+        minPolarAngle={Math.acos(11 / Math.hypot(12, 11, 15))}
+        maxPolarAngle={Math.acos(11 / Math.hypot(12, 11, 15))}
+        screenSpacePanning={false}
         mouseButtons={{
           LEFT: undefined,
-          MIDDLE: MOUSE.PAN,
-          RIGHT: MOUSE.ROTATE,
+          MIDDLE: MOUSE.ROTATE,
+          RIGHT: MOUSE.PAN,
         }}
       />
     </>

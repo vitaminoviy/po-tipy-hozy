@@ -20,6 +20,7 @@ export type Item = {
   z: number
   rotation: number
   surfaceId?: string
+  drawerIndex?: number
   drawers?: [boolean, boolean, boolean]
   lampOn?: boolean
 }
@@ -154,7 +155,7 @@ export const catalog: Record<
     icon: '□',
     category: 'surfaceDecor',
     shape: 'box',
-    height: 0.21,
+    height: 0.214,
   },
 }
 export const categoryNames: Record<Category, string> = {
@@ -188,17 +189,59 @@ export const initialItems: Item[] = [
 export const isSmall = (item: Item) =>
   catalog[item.kind].category === 'surfaceDecor'
 export type WorldItem = Item & { y: number }
+export const DRAWER_TRAVEL = 0.28
+export function drawerSpecs(item: Item) {
+  return item.kind === 'cabinet'
+    ? [0.3, 0.65, 1].map((y) => ({
+        y,
+        width: 1.38,
+        depth: 0.54,
+        inner: [1.22, 0.46] as [number, number],
+        height: 0.24,
+        center: 0.06,
+      }))
+    : item.kind === 'nightstand'
+      ? [
+          {
+            y: 0.5,
+            width: 0.61,
+            depth: 0.48,
+            inner: [0.45, 0.4] as [number, number],
+            height: 0.2,
+            center: 0.05,
+          },
+        ]
+      : []
+}
+export function support(item: Item, parent: Item) {
+  if (item.drawerIndex === undefined) {
+    const top = catalog[parent.kind].surface
+    return top && { ...top, center: 0, open: true, clearance: Infinity }
+  }
+  const drawer = drawerSpecs(parent)[item.drawerIndex]
+  return (
+    drawer && {
+      height: drawer.y - 0.09,
+      size: drawer.inner,
+      center:
+        drawer.center +
+        (parent.drawers?.[item.drawerIndex] ? DRAWER_TRAVEL : 0),
+      open: !!parent.drawers?.[item.drawerIndex],
+      clearance: drawer.height,
+    }
+  )
+}
 export function worldPose(item: Item, items: Item[]): WorldItem {
   const parent = items.find((i) => i.id === item.surfaceId),
-    surface = parent && catalog[parent.kind].surface
+    surface = parent && support(item, parent)
   if (!surface || !parent) return { ...item, y: isSmall(item) ? 0.035 : 0 }
   const angle = (parent.rotation * Math.PI) / 2,
     c = Math.cos(angle),
     s = Math.sin(angle)
   return {
     ...item,
-    x: parent.x + c * item.x + s * item.z,
-    z: parent.z - s * item.x + c * item.z,
+    x: parent.x + c * item.x + s * (item.z + surface.center),
+    z: parent.z - s * item.x + c * (item.z + surface.center),
     y: surface.height + 0.006,
     rotation: (parent.rotation + item.rotation) % 4,
   }
@@ -220,8 +263,11 @@ export function validateSurfacePlacement(
   items: Item[],
 ): string | null {
   const parent = items.find((i) => i.id === item.surfaceId),
-    surface = parent && catalog[parent.kind].surface
+    surface = parent && support(item, parent)
   if (!surface) return 'Нужна поверхность стола, тумбы или комода'
+  if (!surface.open) return 'Сначала откройте ящик'
+  if (catalog[item.kind].height + 0.006 > surface.clearance)
+    return 'Предмет слишком высокий для ящика'
   const [w, d] = footprint(item),
     margin = 0.025
   if (
@@ -234,6 +280,7 @@ export function validateSurfacePlacement(
       other.id !== item.id &&
       isSmall(other) &&
       other.surfaceId === item.surfaceId &&
+      other.drawerIndex === item.drawerIndex &&
       clearanceBetween(item, other) < 0.035 - 1e-6
     )
       return 'На поверхности уже есть другой предмет'

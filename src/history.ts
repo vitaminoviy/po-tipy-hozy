@@ -1,6 +1,12 @@
-import { initialItems, validatePlacement, type Item } from './placement'
+import {
+  initialItems,
+  validatePlacement,
+  drawerSpecs,
+  type Item,
+} from './placement'
 
-export const DRAWER_TRAVEL = 0.28
+import { DRAWER_TRAVEL } from './placement'
+export { DRAWER_TRAVEL } from './placement'
 export type Mode = 'move' | 'interact'
 export type Interaction =
   { kind: 'drawer'; index: number } | { kind: 'lamp' } | { kind: 'take' }
@@ -55,7 +61,7 @@ export function historyReducer(state: History, action: Action): History {
         item.x !== next.x ||
         item.z !== next.z ||
         item.rotation !== next.rotation
-      return next.kind === 'cabinet' && moved
+      return drawerSpecs(next).length && moved
         ? {
             ...next,
             drawers: [false, false, false] as [boolean, boolean, boolean],
@@ -65,9 +71,9 @@ export function historyReducer(state: History, action: Action): History {
     if (
       action.type === 'drawer' &&
       item.id === action.id &&
-      item.kind === 'cabinet' &&
+      drawerSpecs(item).length > 0 &&
       action.index >= 0 &&
-      action.index < 3
+      action.index < drawerSpecs(item).length
     ) {
       const drawers: [boolean, boolean, boolean] = [
         ...(item.drawers ?? [false, false, false]),

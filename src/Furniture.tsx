@@ -9,8 +9,8 @@ import {
   Color,
 } from 'three'
 import type { Item, WorldItem } from './placement'
-import { catalog, footprint } from './placement'
-import { approach, DRAWER_TRAVEL, type Interaction, type Mode } from './history'
+import { catalog, footprint, drawerSpecs } from './placement'
+import { approach, type Interaction, type Mode } from './history'
 
 export function Box({
   p,
@@ -34,46 +34,69 @@ function Leg({ x, z, h = 0.4 }: { x: number; z: number; h?: number }) {
   return <Box p={[x, h / 2, z]} s={[0.09, h, 0.09]} c="#73583d" />
 }
 function Drawer({
-  open,
   y,
   index,
   interactive,
   onInteract,
+  width = 1.38,
+  depth = 0.54,
+  center = 0.06,
+  motion,
+  motionKey,
 }: {
-  open: boolean
   y: number
   index: number
   interactive: boolean
   onInteract: (action: Interaction) => void
+  width?: number
+  depth?: number
+  center?: number
+  motion: Map<string, number>
+  motionKey: string
 }) {
   const group = useRef<Group>(null)
-  useFrame((_, dt) => {
-    if (group.current)
-      group.current.position.z = approach(
-        group.current.position.z,
-        open ? DRAWER_TRAVEL : 0,
-        dt,
-        12,
-      )
+  useFrame(() => {
+    if (group.current) group.current.position.z = motion.get(motionKey) ?? 0
   })
   return (
     <group
       ref={group}
       position={[0, y, 0]}
       onPointerDown={(e) => {
-        if (interactive && e.button === 0) {
+        if (interactive && e.button === 0 && e.buttons === 1) {
           e.stopPropagation()
           onInteract({ kind: 'drawer', index })
         }
       }}
     >
-      <Box p={[0, 0, 0.345]} s={[1.38, 0.28, 0.03]} c="#bc936a" />
-      <Box p={[0, 0, 0.37]} s={[0.22, 0.035, 0.04]} c="#70553a" />
-      <Box p={[0, -0.105, 0.06]} s={[1.3, 0.03, 0.54]} c="#806145" />
-      {[-0.63, 0.63].map((x) => (
-        <Box key={x} p={[x, -0.005, 0.06]} s={[0.04, 0.2, 0.54]} c="#ac825c" />
+      <Box
+        p={[0, 0, center + depth / 2 + 0.015]}
+        s={[width, 0.28, 0.03]}
+        c="#bc936a"
+      />
+      <Box
+        p={[0, 0, center + depth / 2 + 0.04]}
+        s={[width > 1 ? 0.22 : 0.13, 0.035, 0.04]}
+        c="#70553a"
+      />
+      <Box
+        p={[0, -0.105, center]}
+        s={[width - 0.08, 0.03, depth]}
+        c="#806145"
+      />
+      {[-1, 1].map((side) => (
+        <Box
+          key={side}
+          p={[side * (width / 2 - 0.06), -0.005, center]}
+          s={[0.04, 0.2, depth]}
+          c="#ac825c"
+        />
       ))}
-      <Box p={[0, -0.005, -0.21]} s={[1.3, 0.2, 0.035]} c="#ac825c" />
+      <Box
+        p={[0, -0.005, center - depth / 2]}
+        s={[width - 0.08, 0.2, 0.035]}
+        c="#ac825c"
+      />
     </group>
   )
 }
@@ -121,13 +144,13 @@ function Lamp({ on }: { on: boolean }) {
 function Model({
   item,
   interactive,
-  transporting,
   onInteract,
+  drawerMotion,
 }: {
   item: Item
   interactive: boolean
-  transporting: boolean
   onInteract: (action: Interaction) => void
+  drawerMotion: Map<string, number>
 }) {
   const kind = item.kind
   const wood = '#a87546',
@@ -208,9 +231,10 @@ function Model({
               key={index}
               y={y}
               index={index}
-              open={!transporting && !!item.drawers?.[index]}
               interactive={interactive}
               onInteract={onInteract}
+              motion={drawerMotion}
+              motionKey={`${item.id}:${index}`}
             />
           ))}
         </>
@@ -245,10 +269,20 @@ function Model({
     case 'nightstand':
       return (
         <>
-          <Box p={[0, 0.4, 0]} s={[0.7, 0.7, 0.6]} c={wood} />
+          {[-0.325, 0.325].map((x) => (
+            <Box key={x} p={[x, 0.4, 0]} s={[0.05, 0.7, 0.6]} c={wood} />
+          ))}
+          <Box p={[0, 0.4, -0.275]} s={[0.6, 0.7, 0.05]} c={wood} />
+          <Box p={[0, 0.2, 0]} s={[0.6, 0.3, 0.6]} c={wood} />
           <Box p={[0, 0.78, 0]} s={[0.76, 0.08, 0.7]} c="#caa47b" />
-          <Box p={[0, 0.5, 0.31]} s={[0.61, 0.3, 0.035]} c="#bc936a" />
-          <Box p={[0, 0.5, 0.34]} s={[0.13, 0.035, 0.035]} c="#70553a" />
+          <Drawer
+            {...drawerSpecs(item)[0]}
+            index={0}
+            interactive={interactive}
+            onInteract={onInteract}
+            motion={drawerMotion}
+            motionKey={`${item.id}:0`}
+          />
         </>
       )
     case 'book':
@@ -395,16 +429,16 @@ export default function Furniture({
   invalid,
   onDown,
   mode,
-  transporting = false,
   onInteract,
+  drawerMotion,
 }: {
   item: WorldItem
   selected: boolean
   invalid: boolean
   onDown: (e: ThreeEvent<PointerEvent>, item: Item) => void
   mode: Mode
-  transporting?: boolean
   onInteract: (action: Interaction) => void
+  drawerMotion: Map<string, number>
 }) {
   return (
     <>
@@ -425,8 +459,8 @@ export default function Furniture({
           <Model
             item={item}
             interactive={mode === 'interact'}
-            transporting={transporting}
             onInteract={onInteract}
+            drawerMotion={drawerMotion}
           />
         </group>
       </group>

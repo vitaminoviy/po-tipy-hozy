@@ -63,7 +63,7 @@ test('drawers animate independently, interaction never drags, move closes them, 
   page.on('pageerror', (e) => errors.push(e.message))
   await open(page)
   await select(page, 'Дубовый комод')
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await expect(
     page.getByRole('button', { name: /^Взаимодействие/ }),
   ).toHaveAttribute('aria-pressed', 'true')
@@ -92,10 +92,10 @@ test('drawers animate independently, interaction never drags, move closes them, 
     page.getByRole('button', { name: 'Закрыть ящик 2', exact: true }),
   ).toBeVisible()
   await page.screenshot({ path: 'artifacts/drawers-open.png' })
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await drag(page, [4, 1.28, 2.65], -0.25, -0.25)
   await expect(pose(page)).toHaveText('X 3.75 · Z 2.40 · 0°')
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   for (let n = 1; n <= 3; n++)
     await expect(
       page.getByRole('button', { name: `Открыть ящик ${n}`, exact: true }),
@@ -127,7 +127,7 @@ test('lamp fades real illumination, remains usable after moving, and new command
   page.on('pageerror', (e) => errors.push(e.message))
   await open(page)
   await select(page, 'Торшер')
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   const floor = await point(page, 4.6, 0, -1.7)
   const floorShot = () =>
     page.screenshot({
@@ -147,10 +147,10 @@ test('lamp fades real illumination, remains usable after moving, and new command
   expect(mid.equals(on)).toBe(false)
   expect((await floorShot()).equals(darkFloor)).toBe(false)
   await page.screenshot({ path: 'artifacts/lamp-on.png' })
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await drag(page, [4.25, 1.6, -2.7], 0.25, 1)
   await expect(pose(page)).toHaveText('X 4.50 · Z -1.70 · 0°')
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await clickWorld(page, 4.5, 1.6, -1.7)
   await expect(
     page.getByRole('button', { name: 'Включить торшер', exact: true }),
@@ -183,7 +183,7 @@ test('small objects attach to surfaces, reject edges and overlap, follow parent 
   await expect(pose(page)).toHaveText('X 1.05 · Z -2.60 · 0°')
   await page.keyboard.press('r')
   await expect(pose(page)).toContainText('90°')
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await clickWorld(page, 1.05, 0.89, -2.6)
   await expect(
     page.getByRole('button', { name: 'Отменить', exact: true }),
@@ -199,7 +199,7 @@ test('small objects attach to surfaces, reject edges and overlap, follow parent 
   await expect(page.getByTestId('attachment')).toContainText(
     'Прикроватная тумба',
   )
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await select(page, 'Прикроватная тумба')
   // Grab the clear corner; the centre is occupied by the independently pickable book.
   await drag(page, [1.3, 0.82, -2.6], 0, 1.5)
@@ -256,14 +256,14 @@ test('undo and mode changes cancel an active drag; camera still orbits in intera
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
   await page.mouse.move(end.x, end.y, { steps: 10 })
-  await page.keyboard.press('e')
+  await page.keyboard.press('Tab')
   await page.mouse.up()
   await expect(pose(page)).toHaveText('X -2.80 · Z -0.40 · 90°')
   const before = await shot(page)
   await page.mouse.move(1000, 650)
-  await page.mouse.down({ button: 'right' })
+  await page.mouse.down({ button: 'middle' })
   await page.mouse.move(1100, 600, { steps: 12 })
-  await page.mouse.up({ button: 'right' })
+  await page.mouse.up({ button: 'middle' })
   await page.waitForTimeout(500)
   expect((await shot(page)).equals(before)).toBe(false)
   await expect(pose(page)).toHaveText('X -2.80 · Z -0.40 · 90°')

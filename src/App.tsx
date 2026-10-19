@@ -6,6 +6,7 @@ import {
   isSmall,
   worldPose,
   validatePlacement,
+  drawerSpecs,
   type Item,
 } from './placement'
 import {
@@ -15,6 +16,7 @@ import {
   type Mode,
   type Interaction,
 } from './history'
+import { isEditing } from './controls'
 
 declare global {
   interface Window {
@@ -63,13 +65,20 @@ export default function App() {
     (id: string) => {
       const target = items.find((i) => i.id === id)
       if (!target) return
+      if (target.drawerIndex !== undefined) {
+        const parent = items.find((i) => i.id === target.surfaceId)
+        if (!parent?.drawers?.[target.drawerIndex]) {
+          setMessage('Сначала откройте ящик с этим предметом')
+          return
+        }
+      }
       setSelected(id)
       setPlacing(true)
       setDraft(target)
       setMessage(
         isSmall(target)
-          ? 'Наведите на стол, тумбу или комод и щёлкните'
-          : 'Наведите на пол и щёлкните для размещения',
+          ? 'Наведите на поверхность или открытый ящик; WASD — уточнить, Enter — поставить'
+          : 'Мышь или WASD — перенос, Shift — точнее, Q/R — поворот, Enter — поставить',
       )
     },
     [items],
@@ -111,21 +120,27 @@ export default function App() {
     },
     [cancelTransfer],
   )
-  const rotate = useCallback(() => {
-    if (!item || (mode === 'interact' && !draft)) return
-    const active = draft ?? item
-    const next = { ...active, rotation: (active.rotation + 1) % 4 }
-    if (draft) {
-      setDraft(next)
-      return
-    }
-    const error = validatePlacement(next, items)
-    if (error) setMessage(error + ' — поворот отменён')
-    else {
-      commit(next)
-      setMessage('Предмет повёрнут на 90°')
-    }
-  }, [item, items, draft, commit, mode])
+  const rotate = useCallback(
+    (direction = 1) => {
+      if (!item || (mode === 'interact' && !draft)) return
+      const active = draft ?? item
+      const next = {
+        ...active,
+        rotation: (active.rotation + direction + 4) % 4,
+      }
+      if (draft) {
+        setDraft(next)
+        return
+      }
+      const error = validatePlacement(next, items)
+      if (error) setMessage(error + ' — поворот отменён')
+      else {
+        commit(next)
+        setMessage('Предмет повёрнут на 90°')
+      }
+    },
+    [item, items, draft, commit, mode],
+  )
   useEffect(() => {
     const webapp = window.Telegram?.WebApp
     webapp?.ready()
@@ -135,12 +150,7 @@ export default function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const target = e.target
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-      )
-        return
+      if (isEditing(target) || e.altKey) return
       if (e.ctrlKey || e.metaKey) {
         if (e.code === 'KeyZ' || e.key.toLowerCase() === 'z') {
           e.preventDefault()
@@ -151,18 +161,18 @@ export default function App() {
         }
         return
       }
-      if ((e.code === 'KeyE' || e.key.toLowerCase() === 'e') && !e.repeat) {
+      if (e.code === 'Tab') {
         e.preventDefault()
-        switchMode()
+        if (!e.repeat) switchMode()
         return
       }
       if (
-        (e.code === 'KeyR' || e.key.toLowerCase() === 'r') &&
+        (e.code === 'KeyR' || (e.code === 'KeyQ' && draft)) &&
         !e.repeat &&
         !(e.target instanceof HTMLInputElement)
       ) {
         e.preventDefault()
-        rotate()
+        rotate(e.code === 'KeyQ' ? -1 : 1)
       }
       if (e.key === 'Escape') {
         setSelected(null)
@@ -173,7 +183,7 @@ export default function App() {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [rotate, switchMode, travel])
+  }, [rotate, switchMode, travel, draft])
   return (
     <div className="app">
       <header>
@@ -187,7 +197,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.3
+          <i /> ПРОТОТИП 0.3.1
         </span>
       </header>
       <div className="workspace">
@@ -281,7 +291,7 @@ export default function App() {
                   if (mode !== 'interact') switchMode()
                 }}
               >
-                Взаимодействие <kbd>E</kbd>
+                Взаимодействие <kbd>Tab</kbd>
               </button>
             </div>
             <div className="history-tools">
@@ -360,30 +370,34 @@ export default function App() {
                 <kbd>ЛКМ</kbd> Выбрать и перетащить мебель
               </p>
               <p>
-                <kbd>ПКМ</kbd> Вращать камеру
+                <kbd>СКМ</kbd> Вращать камеру · Q / E — поворот
               </p>
               <p>
-                <kbd>СКМ</kbd> Перемещать камеру
+                <kbd>ПКМ</kbd> Перемещать камеру · WASD — движение
               </p>
               <p>
                 <kbd>Колесо</kbd> Приближать и отдалять
               </p>
               <p>
-                <kbd>R</kbd> Повернуть мебель на 90°
+                <kbd>WASD</kbd> В переносе — мебель; Shift — точнее, Q / R —
+                поворот
               </p>
               <p>
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                E — режим взаимодействия: нажимайте на ящики или торшер. Книгу,
-                чашку и коробку можно взять и поставить на стол, тумбу или
-                комод. Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор. Мягкая
-                привязка к сетке 0,25 м: между линиями движение свободное.
-                Зелёный контур — можно поставить, красный — нельзя. Между
-                мебелью — отступ 22 см. Для ковра под мебелью: выберите его в
-                списке, нажмите «Переместить», наведите на пол и щёлкните. R
-                поворачивает и предпросмотр; Esc отменяет. На сенсорном экране:
-                перенос одним пальцем, камера — двумя.
+                Tab — режим взаимодействия: нажимайте на ящики или торшер. Enter
+                — установить; Esc — отменить. Shift+WASD без переноса —
+                ускорение камеры; Home — исходный вид. Книгу, чашку и коробку
+                можно взять и поставить на стол, тумбу или комод или в открытый
+                ящик. Для удобства есть кнопки «В ящик»; содержимое закрытого
+                ящика можно достать после его открытия. Ctrl+Z — отмена; Ctrl+Y
+                / Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
+                линиями движение свободное. Зелёный контур — можно поставить,
+                красный — нельзя. Между мебелью — отступ 22 см. Для ковра под
+                мебелью: выберите его в списке, нажмите «Переместить», наведите
+                на пол и щёлкните. R поворачивает и предпросмотр; Esc отменяет.
+                На сенсорном экране: перенос одним пальцем, камера — двумя.
               </small>
             </div>
           )}
@@ -409,7 +423,9 @@ export default function App() {
               {item && isSmall(item) && (
                 <span data-testid="attachment">
                   {shownItem?.surfaceId
-                    ? 'На: ' +
+                    ? (shownItem.drawerIndex === undefined
+                        ? 'На: '
+                        : `В ящике ${shownItem.drawerIndex + 1}: `) +
                       catalog[
                         items.find((i) => i.id === shownItem.surfaceId)!.kind
                       ].name
@@ -419,8 +435,8 @@ export default function App() {
             </div>
             <div className="selection-actions">
               {mode === 'interact' &&
-                item?.kind === 'cabinet' &&
-                [0, 1, 2].map((index) => (
+                item &&
+                drawerSpecs(item).map((_, index) => (
                   <button
                     key={index}
                     aria-pressed={!!item.drawers?.[index]}
@@ -438,6 +454,71 @@ export default function App() {
                   onClick={() => interact(item.id, { kind: 'lamp' })}
                 >
                   {item.lampOn ? 'Выключить' : 'Включить'} торшер
+                </button>
+              )}
+              {mode === 'interact' &&
+                item &&
+                !draft &&
+                items
+                  .filter(
+                    (child) =>
+                      child.surfaceId === item.id &&
+                      child.drawerIndex !== undefined &&
+                      item.drawers?.[child.drawerIndex],
+                  )
+                  .map((child) => (
+                    <button
+                      key={child.id}
+                      onClick={() => startPlacement(child.id)}
+                    >
+                      Достать: {catalog[child.kind].name}
+                    </button>
+                  ))}
+              {draft &&
+                isSmall(draft) &&
+                items.flatMap((parent) =>
+                  drawerSpecs(parent).map(
+                    (_, index) =>
+                      parent.drawers?.[index] && (
+                        <button
+                          key={`${parent.id}-${index}`}
+                          onClick={() => {
+                            const candidate = {
+                              ...draft,
+                              x: 0,
+                              z: 0,
+                              surfaceId: parent.id,
+                              drawerIndex: index,
+                              rotation:
+                                (worldPose(draft, items).rotation -
+                                  parent.rotation +
+                                  4) %
+                                4,
+                            }
+                            setDraft(candidate)
+                            setMessage(
+                              'Ящик выбран — WASD для уточнения, Enter для установки',
+                            )
+                          }}
+                        >
+                          В ящик {index + 1}: {catalog[parent.kind].name}
+                        </button>
+                      ),
+                  ),
+                )}
+              {draft && (
+                <button
+                  onClick={() => {
+                    const error = validatePlacement(draft, items)
+                    if (error) {
+                      setMessage(error)
+                      return
+                    }
+                    commit(draft)
+                    cancelTransfer()
+                  }}
+                >
+                  Установить <kbd>Enter</kbd>
                 </button>
               )}
               {(mode === 'move' || (item && isSmall(item)) || placing) && (
@@ -468,7 +549,7 @@ export default function App() {
               {(mode === 'move' || draft) && (
                 <button
                   disabled={!item || (mode === 'interact' && !draft)}
-                  onClick={rotate}
+                  onClick={() => rotate()}
                 >
                   ↻ <span>Повернуть</span> <kbd>R</kbd>
                 </button>
@@ -490,7 +571,7 @@ export default function App() {
             : message}
         </span>
         <span>
-          ЛКМ — мебель <b>·</b> ПКМ — обзор <b>·</b> Колесо — масштаб
+          WASD — камера / перенос <b>·</b> СКМ — обзор <b>·</b> ПКМ — сдвиг
         </span>
       </footer>
     </div>

@@ -213,17 +213,17 @@ test('camera orbit, pan, zoom, reset and help', async ({ page }) => {
     })
   const before = await capture()
   await page.mouse.move(950, 650)
-  await page.mouse.down({ button: 'right' })
+  await page.mouse.down({ button: 'middle' })
   await page.mouse.move(1080, 620, { steps: 12 })
-  await page.mouse.up({ button: 'right' })
+  await page.mouse.up({ button: 'middle' })
   await page.waitForTimeout(500)
   expect(await imageDifference(page, before, await capture())).toBeGreaterThan(
     0.001,
   )
   const orbit = await capture()
-  await page.mouse.down({ button: 'middle' })
+  await page.mouse.down({ button: 'right' })
   await page.mouse.move(1000, 650, { steps: 10 })
-  await page.mouse.up({ button: 'middle' })
+  await page.mouse.up({ button: 'right' })
   await page.waitForTimeout(500)
   expect(await imageDifference(page, orbit, await capture())).toBeGreaterThan(
     0.001,
