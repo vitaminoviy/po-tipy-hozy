@@ -1,4 +1,26 @@
-import { placementCandidate, validatePlacement, type Item } from './placement'
+import {
+  placementCandidate,
+  validatePlacement,
+  drawerSpecs,
+  isSmall,
+  type Item,
+} from './placement'
+import type { Interaction } from './history'
+
+export const CAMERA_SPEED = 5.5
+export const CAMERA_FAST_SPEED = 13.2
+export const CAMERA_MIN_POLAR = 0.35
+export const CAMERA_MAX_POLAR = 1.3
+
+export function primaryInteraction(item?: Item): Interaction | null {
+  if (!item) return null
+  if (item.kind === 'lamp') return { kind: 'lamp' }
+  if (isSmall(item)) return { kind: 'take' }
+  const drawers = drawerSpecs(item)
+  if (!drawers.length) return null
+  const opened = drawers.findIndex((_, index) => item.drawers?.[index])
+  return { kind: 'drawer', index: opened < 0 ? 0 : opened }
+}
 
 export function isEditing(target: EventTarget | null) {
   return (

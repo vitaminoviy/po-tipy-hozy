@@ -181,7 +181,7 @@ test('small objects attach to surfaces, reject edges and overlap, follow parent 
     'Прикроватная тумба',
   )
   await expect(pose(page)).toHaveText('X 1.05 · Z -2.60 · 0°')
-  await page.keyboard.press('r')
+  await page.getByRole('button', { name: /Повернуть/ }).click()
   await expect(pose(page)).toContainText('90°')
   await page.keyboard.press('Tab')
   await clickWorld(page, 1.05, 0.89, -2.6)
@@ -203,7 +203,7 @@ test('small objects attach to surfaces, reject edges and overlap, follow parent 
   await select(page, 'Прикроватная тумба')
   // Grab the clear corner; the centre is occupied by the independently pickable book.
   await drag(page, [1.3, 0.82, -2.6], 0, 1.5)
-  await page.keyboard.press('r')
+  await page.getByRole('button', { name: /Повернуть/ }).click()
   await select(page, 'Книга')
   await expect(pose(page)).toHaveText('X 1.05 · Z -1.10 · 180°')
   const start = await point(page, 1.05, 0.89, -1.1)
@@ -242,7 +242,7 @@ test('undo and mode changes cancel an active drag; camera still orbits in intera
 }) => {
   await open(page)
   await select(page, 'Журнальный стол')
-  await page.keyboard.press('r')
+  await page.getByRole('button', { name: /Повернуть/ }).click()
   const start = await point(page, -2.8, 0.59, -0.4),
     end = await point(page, -1.5, 0.59, 1)
   await page.mouse.move(start.x, start.y)

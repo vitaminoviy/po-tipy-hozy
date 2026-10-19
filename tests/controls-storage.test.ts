@@ -5,6 +5,8 @@ import {
   keyboardPlacement,
   inputOwner,
   smoothAxis,
+  CAMERA_SPEED,
+  primaryInteraction,
 } from '../src/controls'
 import {
   drawerSpecs,
@@ -62,7 +64,7 @@ test('camera acceleration and braking integrate equally at 30, 60 and 144 FPS', 
     let velocity = 0,
       distance = 0
     for (let frame = 0; frame < fps * 2; frame++) {
-      const next = smoothAxis(velocity, frame < fps ? 2.5 : 0, 1 / fps)
+      const next = smoothAxis(velocity, frame < fps ? CAMERA_SPEED : 0, 1 / fps)
       velocity = next.velocity
       distance += next.distance
     }
@@ -70,6 +72,25 @@ test('camera acceleration and braking integrate equally at 30, 60 and 144 FPS', 
   }
   assert.ok(Math.abs(simulate(30) - simulate(144)) < 1e-10)
   assert.ok(Math.abs(simulate(60) - simulate(144)) < 1e-10)
+})
+
+test('E selects existing actions without camera movement or a new mechanic', () => {
+  assert.equal(primaryInteraction(), null)
+  assert.equal(primaryInteraction(initialItems[0]), null)
+  assert.deepEqual(
+    primaryInteraction(initialItems.find((i) => i.kind === 'lamp')),
+    { kind: 'lamp' },
+  )
+  assert.deepEqual(primaryInteraction(stored('book')), { kind: 'take' })
+  assert.deepEqual(
+    primaryInteraction({ ...cabinet, drawers: [false, false, false] }),
+    { kind: 'drawer', index: 0 },
+  )
+  assert.deepEqual(
+    primaryInteraction({ ...cabinet, drawers: [false, true, false] }),
+    { kind: 'drawer', index: 1 },
+  )
+  assert.deepEqual(primaryInteraction(stand), { kind: 'drawer', index: 0 })
 })
 test('held WASD escapes snap capture, remains frame-rate independent and precision reduces distance', () => {
   const item = { ...initialItems.find((i) => i.id === 'plant')!, x: -3, z: 0 }

@@ -23,6 +23,10 @@ import {
   keyboardPlacement,
   inputOwner,
   smoothAxis,
+  CAMERA_SPEED,
+  CAMERA_FAST_SPEED,
+  CAMERA_MIN_POLAR,
+  CAMERA_MAX_POLAR,
 } from './controls'
 
 // Drawer mesh and contents read a single animation value. Closing hides meshes
@@ -154,7 +158,7 @@ function Interior(p: Props) {
     } else {
       keyboardRaw.current = null
       const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
-        precise ? 6 : 2.5,
+        precise ? CAMERA_FAST_SPEED : CAMERA_SPEED,
       )
       const x = smoothAxis(cameraVelocity.current.x, desired.x, dt),
         z = smoothAxis(cameraVelocity.current.z, desired.z, dt)
@@ -162,13 +166,6 @@ function Interior(p: Props) {
       const shift = new Vector3(x.distance, 0, z.distance)
       camera.position.add(shift)
       orbit.target.add(shift)
-      const turn =
-        Number(keys.current.has('KeyQ')) - Number(keys.current.has('KeyE'))
-      if (turn)
-        camera.position
-          .sub(orbit.target)
-          .applyAxisAngle(new Vector3(0, 1, 0), turn * dt * 1.1)
-          .add(orbit.target)
     }
     orbit.update()
     // Clamp after damping as well: residual mouse pan must not escape bounds.
@@ -366,16 +363,9 @@ function Interior(p: Props) {
     const key = (e: KeyboardEvent) => {
       if (isEditing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
       if (
-        [
-          'KeyW',
-          'KeyA',
-          'KeyS',
-          'KeyD',
-          'KeyQ',
-          'KeyE',
-          'ShiftLeft',
-          'ShiftRight',
-        ].includes(e.code)
+        ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight'].includes(
+          e.code,
+        )
       ) {
         keys.current.add(e.code)
         e.preventDefault()
@@ -550,8 +540,8 @@ function Interior(p: Props) {
         enableDamping
         minZoom={Math.min(25, fitZoom * 0.65)}
         maxZoom={95}
-        minPolarAngle={Math.acos(11 / Math.hypot(12, 11, 15))}
-        maxPolarAngle={Math.acos(11 / Math.hypot(12, 11, 15))}
+        minPolarAngle={CAMERA_MIN_POLAR}
+        maxPolarAngle={CAMERA_MAX_POLAR}
         screenSpacePanning={false}
         mouseButtons={{
           LEFT: undefined,

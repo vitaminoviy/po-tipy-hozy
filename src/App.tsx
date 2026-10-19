@@ -16,7 +16,7 @@ import {
   type Mode,
   type Interaction,
 } from './history'
-import { isEditing } from './controls'
+import { isEditing, primaryInteraction } from './controls'
 
 declare global {
   interface Window {
@@ -86,7 +86,7 @@ export default function App() {
   const interact = useCallback(
     (id: string, action: Interaction) => {
       const target = items.find((i) => i.id === id)
-      if (!target || draft || mode !== 'interact') return
+      if (!target || draft) return
       if (action.kind === 'take') {
         startPlacement(id)
         return
@@ -106,7 +106,7 @@ export default function App() {
         setMessage(target.lampOn ? 'Торшер выключается' : 'Торшер включается')
       }
     },
-    [items, draft, mode, startPlacement],
+    [items, draft, startPlacement],
   )
   const travel = useCallback(
     (type: 'undo' | 'redo') => {
@@ -166,8 +166,17 @@ export default function App() {
         if (!e.repeat) switchMode()
         return
       }
+      if (e.code === 'KeyE' && !e.repeat && !draft) {
+        const action = primaryInteraction(item)
+        if (item && action) {
+          e.preventDefault()
+          interact(item.id, action)
+        }
+        return
+      }
       if (
-        (e.code === 'KeyR' || (e.code === 'KeyQ' && draft)) &&
+        draft &&
+        (e.code === 'KeyR' || e.code === 'KeyQ') &&
         !e.repeat &&
         !(e.target instanceof HTMLInputElement)
       ) {
@@ -183,7 +192,7 @@ export default function App() {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [rotate, switchMode, travel, draft])
+  }, [rotate, switchMode, travel, draft, item, interact])
   return (
     <div className="app">
       <header>
@@ -197,7 +206,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.3.1
+          <i /> ПРОТОТИП 0.3.2
         </span>
       </header>
       <div className="workspace">
@@ -227,7 +236,7 @@ export default function App() {
                   if (!draft) {
                     setSelected(i.id)
                     setMessage(
-                      'Перетащите предмет мышью или нажмите R для поворота',
+                      'E — взаимодействовать; для переноса перетащите мышью или нажмите «Переместить»',
                     )
                   }
                 }}
@@ -370,7 +379,7 @@ export default function App() {
                 <kbd>ЛКМ</kbd> Выбрать и перетащить мебель
               </p>
               <p>
-                <kbd>СКМ</kbd> Вращать камеру · Q / E — поворот
+                <kbd>СКМ</kbd> Вращать камеру по горизонтали и вертикали
               </p>
               <p>
                 <kbd>ПКМ</kbd> Перемещать камеру · WASD — движение
@@ -386,18 +395,19 @@ export default function App() {
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                Tab — режим взаимодействия: нажимайте на ящики или торшер. Enter
-                — установить; Esc — отменить. Shift+WASD без переноса —
-                ускорение камеры; Home — исходный вид. Книгу, чашку и коробку
-                можно взять и поставить на стол, тумбу или комод или в открытый
-                ящик. Для удобства есть кнопки «В ящик»; содержимое закрытого
-                ящика можно достать после его открытия. Ctrl+Z — отмена; Ctrl+Y
-                / Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
-                линиями движение свободное. Зелёный контур — можно поставить,
-                красный — нельзя. Между мебелью — отступ 22 см. Для ковра под
-                мебелью: выберите его в списке, нажмите «Переместить», наведите
-                на пол и щёлкните. R поворачивает и предпросмотр; Esc отменяет.
-                На сенсорном экране: перенос одним пальцем, камера — двумя.
+                E — действие выбранного предмета: ящик, торшер или взять вещь.
+                Tab — переключить режим для кликов мышью. Enter — установить;
+                Esc — отменить. Shift+WASD без переноса — ускорение камеры; Home
+                — исходный вид. Книгу, чашку и коробку можно взять и поставить
+                на стол, тумбу или комод или в открытый ящик. Для удобства есть
+                кнопки «В ящик»; содержимое закрытого ящика можно достать после
+                его открытия. Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор.
+                Мягкая привязка к сетке 0,25 м: между линиями движение
+                свободное. Зелёный контур — можно поставить, красный — нельзя.
+                Между мебелью — отступ 22 см. Для ковра под мебелью: выберите
+                его в списке, нажмите «Переместить», наведите на пол и щёлкните.
+                R поворачивает и предпросмотр; Esc отменяет. На сенсорном
+                экране: перенос одним пальцем, камера — двумя.
               </small>
             </div>
           )}
@@ -551,7 +561,7 @@ export default function App() {
                   disabled={!item || (mode === 'interact' && !draft)}
                   onClick={() => rotate()}
                 >
-                  ↻ <span>Повернуть</span> <kbd>R</kbd>
+                  ↻ <span>Повернуть</span> {draft && <kbd>Q / R</kbd>}
                 </button>
               )}
             </div>

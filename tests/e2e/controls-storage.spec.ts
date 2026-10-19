@@ -62,7 +62,9 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   await page.waitForTimeout(300)
   const walked = await camera(page),
     walkDistance = distance(walked.target, initial.target)
-  expect(walkDistance).toBeGreaterThan(0.3)
+  // 320 ms at 5.5 m/s with acceleration and the subsequent braking tail.
+  expect(walkDistance).toBeGreaterThan(1.2)
+  expect(walkDistance).toBeLessThan(2.2)
   expect(walked.target[1]).toBe(0)
   expect(walked.position[1]).toBeCloseTo(11, 5)
   await page.keyboard.press('Home')
@@ -74,7 +76,18 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
     walkDistance * 1.6,
   )
   await page.keyboard.press('Home')
+  await page.keyboard.press('Escape')
   await hold(page, 'e')
+  await hold(page, 'q')
+  expect(
+    distance((await camera(page)).position, initial.position),
+  ).toBeLessThan(0.001)
+  await select(page, 'Дубовый комод')
+  await page.mouse.move(950, 650)
+  await page.mouse.down({ button: 'middle' })
+  await page.mouse.move(1080, 650, { steps: 12 })
+  await page.mouse.up({ button: 'middle' })
+  await page.waitForTimeout(500)
   const yaw = await camera(page)
   expect(distance(yaw.position, initial.position)).toBeGreaterThan(2)
   await hold(page, 'w')
@@ -100,7 +113,12 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   const orbited = await camera(page)
   expect(distance(orbited.target, initial.target)).toBeLessThan(0.001)
   expect(distance(orbited.position, initial.position)).toBeGreaterThan(2)
-  expect(orbited.position[1]).toBeCloseTo(11, 5)
+  expect(Math.abs(orbited.position[1] - 11)).toBeGreaterThan(1)
+  const polar = Math.acos(
+    orbited.position[1] / distance(orbited.position, orbited.target),
+  )
+  expect(polar).toBeGreaterThanOrEqual(0.35 - 1e-6)
+  expect(polar).toBeLessThanOrEqual(1.3 + 1e-6)
   await page.mouse.down({ button: 'right' })
   await page.mouse.move(1000, 600, { steps: 12 })
   await page.mouse.up({ button: 'right' })
@@ -124,6 +142,30 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
           ),
       ),
   ).toBe(true)
+  await expect(pose(page)).toHaveText(originalPose!)
+  await page.keyboard.press('Home')
+  for (const [y, limit] of [
+    [70, 1.3],
+    [900, 0.35],
+  ]) {
+    await page.mouse.move(950, 650)
+    await page.mouse.down({ button: 'middle' })
+    await page.mouse.move(950, y, { steps: 20 })
+    await page.mouse.up({ button: 'middle' })
+    await page.waitForTimeout(600)
+    const tilted = await camera(page)
+    expect(
+      Math.acos(
+        (tilted.position[1] - tilted.target[1]) /
+          distance(tilted.position, tilted.target),
+      ),
+    ).toBeCloseTo(limit, 4)
+    await page.screenshot({ path: `artifacts/camera-polar-${limit}.png` })
+    await page.waitForTimeout(150)
+    expect(
+      distance((await camera(page)).position, tilted.position),
+    ).toBeLessThan(0.01)
+  }
   await expect(pose(page)).toHaveText(originalPose!)
   await page.keyboard.press('Home')
   await page.keyboard.down('Shift')
@@ -151,6 +193,83 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
     page.getByRole('button', { name: /^Взаимодействие/ }),
   ).toHaveAttribute('aria-pressed', 'false')
   await expect(pose(page)).toHaveText(originalPose!)
+})
+
+test('E interacts in both modes, Q/R are placement-only and typing suppresses actions', async ({
+  page,
+}) => {
+  await open(page)
+  const initial = await camera(page)
+  await select(page, 'Торшер')
+  await page.keyboard.down('e')
+  await page.keyboard.down('e')
+  await page.keyboard.up('e')
+  await page.keyboard.press('Tab')
+  await expect(
+    page.getByRole('button', { name: 'Выключить торшер', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('e')
+  await expect(
+    page.getByRole('button', { name: 'Включить торшер', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('Control+z')
+  await expect(
+    page.getByRole('button', { name: 'Выключить торшер', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('Control+y')
+  await select(page, 'Прикроватная тумба')
+  await page.keyboard.press('e')
+  await expect(
+    page.getByRole('button', { name: 'Закрыть ящик 1', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('e')
+  await expect(
+    page.getByRole('button', { name: 'Открыть ящик 1', exact: true }),
+  ).toBeVisible()
+  await select(page, 'Дубовый комод')
+  await select(page, 'Открыть ящик 2')
+  await page.keyboard.press('e')
+  await expect(
+    page.getByRole('button', { name: 'Открыть ящик 2', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('e')
+  await expect(
+    page.getByRole('button', { name: 'Закрыть ящик 1', exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('Tab')
+  await select(page, 'Журнальный стол')
+  const tablePose = await pose(page).textContent()
+  await page.keyboard.press('q')
+  await page.keyboard.press('r')
+  await page.keyboard.press('e')
+  await expect(pose(page)).toHaveText(tablePose!)
+  await select(page, 'Книга')
+  await page.keyboard.press('e')
+  await expect(page.getByRole('button', { name: /^Установить/ })).toBeVisible()
+  const bookPose = await pose(page).textContent()
+  await page.keyboard.press('e')
+  await expect(pose(page)).toHaveText(bookPose!)
+  await page.keyboard.press('r')
+  await expect(pose(page)).toContainText('90°')
+  await page.keyboard.press('q')
+  await expect(pose(page)).toHaveText(bookPose!)
+  await page.keyboard.press('Escape')
+  await select(page, 'Торшер')
+  await page.evaluate(() => {
+    const input = document.createElement('textarea')
+    document.body.append(input)
+    input.focus()
+  })
+  await page.keyboard.type('e')
+  await page.keyboard.press('Tab')
+  await page.evaluate(() => document.querySelector('textarea')!.remove())
+  await page.keyboard.press('Tab')
+  await expect(
+    page.getByRole('button', { name: 'Включить торшер', exact: true }),
+  ).toBeVisible()
+  expect(
+    distance((await camera(page)).position, initial.position),
+  ).toBeLessThan(0.001)
 })
 
 test('keyboard placement owns WASD, precision and Q/R; enter records once, escape cancels, history restores', async ({
