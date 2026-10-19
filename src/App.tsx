@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useReducer } from 'react'
 import Scene from './Scene'
 import {
   catalog,
-  initialItems,
+  categoryNames,
+  isSmall,
+  worldPose,
   validatePlacement,
   type Item,
 } from './placement'
+import {
+  createHistory,
+  historyReducer,
+  drawerOpeningError,
+  type Mode,
+  type Interaction,
+} from './history'
 
 declare global {
   interface Window {
@@ -19,11 +28,15 @@ declare global {
   }
 }
 export default function App() {
-  const [items, setItems] = useState<Item[]>(() =>
-    initialItems.map((i) => ({ ...i })),
+  const [history, dispatch] = useReducer(historyReducer, undefined, () =>
+    createHistory(),
   )
+  const items = history.present
+  const [mode, setMode] = useState<Mode>('move')
+  const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraft] = useState<Item | null>(null)
+  const [placing, setPlacing] = useState(false)
   const [walls, setWalls] = useState(true)
   const [resetCamera, setResetCamera] = useState(0)
   const [message, setMessage] = useState(
@@ -31,29 +44,120 @@ export default function App() {
   )
   const [help, setHelp] = useState(false)
   const item = items.find((i) => i.id === selected)
+  const shownItem =
+    (draft ?? item) ? worldPose((draft ?? item)!, items) : undefined
   const commit = useCallback(
-    (next: Item) =>
-      setItems((old) => old.map((i) => (i.id === next.id ? next : i))),
+    (next: Item) => dispatch({ type: 'change', item: next }),
     [],
   )
+  const cancelTransfer = useCallback(() => {
+    setDraft(null)
+    setPlacing(false)
+    setCancelToken((n) => n + 1)
+  }, [])
+  const switchMode = useCallback(() => {
+    cancelTransfer()
+    setMode((old) => (old === 'move' ? 'interact' : 'move'))
+  }, [cancelTransfer])
+  const startPlacement = useCallback(
+    (id: string) => {
+      const target = items.find((i) => i.id === id)
+      if (!target) return
+      setSelected(id)
+      setPlacing(true)
+      setDraft(target)
+      setMessage(
+        isSmall(target)
+          ? 'Наведите на стол, тумбу или комод и щёлкните'
+          : 'Наведите на пол и щёлкните для размещения',
+      )
+    },
+    [items],
+  )
+  const interact = useCallback(
+    (id: string, action: Interaction) => {
+      const target = items.find((i) => i.id === id)
+      if (!target || draft || mode !== 'interact') return
+      if (action.kind === 'take') {
+        startPlacement(id)
+        return
+      }
+      if (action.kind === 'drawer') {
+        if (!target.drawers?.[action.index]) {
+          const error = drawerOpeningError(target, items)
+          if (error) {
+            setMessage('Ящик нельзя открыть: ' + error)
+            return
+          }
+        }
+        dispatch({ type: 'drawer', id, index: action.index })
+        setMessage('Состояние ящика изменено')
+      } else {
+        dispatch({ type: 'lamp', id })
+        setMessage(target.lampOn ? 'Торшер выключается' : 'Торшер включается')
+      }
+    },
+    [items, draft, mode, startPlacement],
+  )
+  const travel = useCallback(
+    (type: 'undo' | 'redo') => {
+      cancelTransfer()
+      dispatch({ type })
+      setMessage(
+        type === 'undo'
+          ? 'Отмена последнего действия'
+          : 'Повтор последнего действия',
+      )
+    },
+    [cancelTransfer],
+  )
   const rotate = useCallback(() => {
-    if (!item || draft) return
-    const next = { ...item, rotation: (item.rotation + 1) % 4 }
+    if (!item || (mode === 'interact' && !draft)) return
+    const active = draft ?? item
+    const next = { ...active, rotation: (active.rotation + 1) % 4 }
+    if (draft) {
+      setDraft(next)
+      return
+    }
     const error = validatePlacement(next, items)
     if (error) setMessage(error + ' — поворот отменён')
     else {
       commit(next)
       setMessage('Предмет повёрнут на 90°')
     }
-  }, [item, items, draft, commit])
+  }, [item, items, draft, commit, mode])
   useEffect(() => {
     const webapp = window.Telegram?.WebApp
     webapp?.ready()
     webapp?.expand()
     webapp?.disableVerticalSwipes?.()
+  }, [])
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      const target = e.target
       if (
-        e.key.toLowerCase() === 'r' &&
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      )
+        return
+      if (e.ctrlKey || e.metaKey) {
+        if (e.code === 'KeyZ' || e.key.toLowerCase() === 'z') {
+          e.preventDefault()
+          travel(e.shiftKey ? 'redo' : 'undo')
+        } else if (e.code === 'KeyY' || e.key.toLowerCase() === 'y') {
+          e.preventDefault()
+          travel('redo')
+        }
+        return
+      }
+      if ((e.code === 'KeyE' || e.key.toLowerCase() === 'e') && !e.repeat) {
+        e.preventDefault()
+        switchMode()
+        return
+      }
+      if (
+        (e.code === 'KeyR' || e.key.toLowerCase() === 'r') &&
         !e.repeat &&
         !(e.target instanceof HTMLInputElement)
       ) {
@@ -63,12 +167,13 @@ export default function App() {
       if (e.key === 'Escape') {
         setSelected(null)
         setDraft(null)
+        setPlacing(false)
         setHelp(false)
       }
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [rotate])
+  }, [rotate, switchMode, travel])
   return (
     <div className="app">
       <header>
@@ -82,7 +187,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.1
+          <i /> ПРОТОТИП 0.3
         </span>
       </header>
       <div className="workspace">
@@ -128,7 +233,10 @@ export default function App() {
                 </span>
                 <span>
                   {catalog[i.kind].name}
-                  <small>{i.x < 0 ? 'Гостиная' : 'Спальня'}</small>
+                  <small>
+                    {worldPose(i, items).x < 0 ? 'Гостиная' : 'Спальня'} ·{' '}
+                    {categoryNames[catalog[i.kind].category]}
+                  </small>
                 </span>
                 <span className="item-arrow">↗</span>
               </button>
@@ -157,17 +265,61 @@ export default function App() {
               ? <span>Управление</span>
             </button>
           </div>
-          <div className="scene">
+          <div className="interaction-tools">
+            <div role="group" aria-label="Режим работы">
+              <button
+                aria-pressed={mode === 'move'}
+                onClick={() => {
+                  if (mode !== 'move') switchMode()
+                }}
+              >
+                Перемещение
+              </button>
+              <button
+                aria-pressed={mode === 'interact'}
+                onClick={() => {
+                  if (mode !== 'interact') switchMode()
+                }}
+              >
+                Взаимодействие <kbd>E</kbd>
+              </button>
+            </div>
+            <div className="history-tools">
+              <button
+                aria-label="Отменить действие"
+                title="Ctrl+Z"
+                disabled={!history.past.length}
+                onClick={() => travel('undo')}
+              >
+                ↶
+              </button>
+              <button
+                aria-label="Повторить действие"
+                title="Ctrl+Y / Ctrl+Shift+Z"
+                disabled={!history.future.length}
+                onClick={() => travel('redo')}
+              >
+                ↷
+              </button>
+            </div>
+          </div>
+          <div className={'scene' + (placing ? ' placing' : '')}>
             <Scene
               items={items}
               selected={selected}
               draft={draft}
+              placing={placing}
               walls={walls}
               resetCamera={resetCamera}
               onSelect={setSelected}
               onDraft={setDraft}
               onCommit={commit}
               onMessage={setMessage}
+              onPlacementEnd={() => setPlacing(false)}
+              mode={mode}
+              cancelToken={cancelToken}
+              onInteract={interact}
+              onTake={startPlacement}
             />
           </div>
           <div className="room-labels">
@@ -223,9 +375,15 @@ export default function App() {
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                Шаг размещения — 0,25 м. Красная подсветка означает, что место
-                занято или выходит за границы. На сенсорном экране: перенос
-                одним пальцем, камера — двумя.
+                E — режим взаимодействия: нажимайте на ящики или торшер. Книгу,
+                чашку и коробку можно взять и поставить на стол, тумбу или
+                комод. Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор. Мягкая
+                привязка к сетке 0,25 м: между линиями движение свободное.
+                Зелёный контур — можно поставить, красный — нельзя. Между
+                мебелью — отступ 22 см. Для ковра под мебелью: выберите его в
+                списке, нажмите «Переместить», наведите на пол и щёлкните. R
+                поворачивает и предпросмотр; Esc отменяет. На сенсорном экране:
+                перенос одним пальцем, камера — двумя.
               </small>
             </div>
           )}
@@ -239,19 +397,83 @@ export default function App() {
                 {item ? catalog[item.kind].name : 'Поставьте всё по-своему'}
               </strong>
               <span>
-                {item ? (
+                {shownItem ? (
                   <output data-testid="pose">
-                    X {item.x.toFixed(2)} · Z {item.z.toFixed(2)} ·{' '}
-                    {item.rotation * 90}°
+                    X {shownItem.x.toFixed(2)} · Z {shownItem.z.toFixed(2)} ·{' '}
+                    {shownItem.rotation * 90}°
                   </output>
                 ) : (
                   'Выберите мебель, чтобы начать обустройство'
                 )}
               </span>
+              {item && isSmall(item) && (
+                <span data-testid="attachment">
+                  {shownItem?.surfaceId
+                    ? 'На: ' +
+                      catalog[
+                        items.find((i) => i.id === shownItem.surfaceId)!.kind
+                      ].name
+                    : 'Выберите поверхность'}
+                </span>
+              )}
             </div>
-            <button disabled={!item || !!draft} onClick={rotate}>
-              ↻ <span>Повернуть</span> <kbd>R</kbd>
-            </button>
+            <div className="selection-actions">
+              {mode === 'interact' &&
+                item?.kind === 'cabinet' &&
+                [0, 1, 2].map((index) => (
+                  <button
+                    key={index}
+                    aria-pressed={!!item.drawers?.[index]}
+                    disabled={!!draft}
+                    onClick={() => interact(item.id, { kind: 'drawer', index })}
+                  >
+                    {item.drawers?.[index] ? 'Закрыть' : 'Открыть'} ящик{' '}
+                    {index + 1}
+                  </button>
+                ))}
+              {mode === 'interact' && item?.kind === 'lamp' && (
+                <button
+                  aria-pressed={!!item.lampOn}
+                  disabled={!!draft}
+                  onClick={() => interact(item.id, { kind: 'lamp' })}
+                >
+                  {item.lampOn ? 'Выключить' : 'Включить'} торшер
+                </button>
+              )}
+              {(mode === 'move' || (item && isSmall(item)) || placing) && (
+                <button
+                  disabled={
+                    !item ||
+                    (!!draft && !placing) ||
+                    (mode === 'interact' && !!item && !isSmall(item))
+                  }
+                  aria-pressed={placing}
+                  onClick={() => {
+                    if (placing) {
+                      setPlacing(false)
+                      setDraft(null)
+                      setMessage('Перенос отменён')
+                      return
+                    }
+                    if (item) startPlacement(item.id)
+                  }}
+                >
+                  {placing
+                    ? 'Отменить'
+                    : item && isSmall(item)
+                      ? 'Взять предмет'
+                      : 'Переместить'}
+                </button>
+              )}
+              {(mode === 'move' || draft) && (
+                <button
+                  disabled={!item || (mode === 'interact' && !draft)}
+                  onClick={rotate}
+                >
+                  ↻ <span>Повернуть</span> <kbd>R</kbd>
+                </button>
+              )}
+            </div>
           </div>
         </main>
       </div>
@@ -262,7 +484,9 @@ export default function App() {
           <i />
           {draft
             ? validatePlacement(draft, items) ||
-              'Можно разместить — отпустите кнопку мыши'
+              (placing
+                ? 'Можно разместить — щёлкните для установки'
+                : 'Можно разместить — отпустите кнопку мыши')
             : message}
         </span>
         <span>

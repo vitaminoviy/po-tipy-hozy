@@ -33,22 +33,16 @@ export default function House({ walls }: { walls: boolean }) {
           key={i}
           p={[0, -0.015, -3.375 + i * 0.25]}
           s={[10, 0.06, 0.238]}
-          c={i % 3 === 0 ? '#d7b58c' : i % 3 === 1 ? '#dfc198' : '#dabe95'}
+          c={i % 3 === 0 ? '#bc9165' : i % 3 === 1 ? '#d0a77a' : '#c69a6c'}
         />
       ))}
-      {/* Rugs are decoration, not placement obstacles. */}
-      <Box p={[-2.7, 0.023, -0.1]} s={[3.45, 0.018, 3.45]} c="#d9d8be" />
-      {[-1.65, 1.45].map((z) => (
-        <Box key={z} p={[-2.7, 0.035, z]} s={[3.3, 0.006, 0.035]} c="#b7b99d" />
-      ))}
-      <Box p={[2.6, 0.023, -0.35]} s={[3.3, 0.018, 4.3]} c="#d1bfaa" />
       {walls ? (
         <>
-          <WindowWall x={-2.5} color="#e7e0cc" />
-          <WindowWall x={2.5} color="#d4dcca" />
-          <Box p={[-5, 1.5, 0]} s={[0.18, 3, 7]} c="#e8e0ce" />
-          <Box p={[5, 0.36, 0]} s={[0.18, 0.72, 7]} c="#d4dcca" />
-          <Box p={[0, 1.5, -1.4]} s={[0.18, 3, 4.2]} c="#dedcc8" />
+          <WindowWall x={-2.5} color="#e2d8c1" />
+          <WindowWall x={2.5} color="#aebda5" />
+          <Box p={[-5, 1.5, 0]} s={[0.18, 3, 7]} c="#e2d8c1" />
+          <Box p={[5, 0.36, 0]} s={[0.18, 0.72, 7]} c="#aebda5" />
+          <Box p={[0, 1.5, -1.4]} s={[0.18, 3, 4.2]} c="#c3c5ad" />
           <Box p={[0, 0.36, 2.95]} s={[0.18, 0.72, 1.1]} c="#dedcc8" />
           <Box p={[0, 2.75, 1.55]} s={[0.18, 0.5, 1.7]} c="#dedcc8" />
           {[0.7, 2.4].map((z) => (

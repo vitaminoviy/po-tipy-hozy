@@ -225,6 +225,76 @@ main {
 .scene canvas {
   touch-action: none;
 }
+.scene.placing canvas {
+  cursor: crosshair;
+}
+.selection-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.selection {
+  flex-wrap: wrap;
+}
+.interaction-tools {
+  position: absolute;
+  top: 100px;
+  left: 28px;
+  right: 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+.interaction-tools > div {
+  display: flex;
+  gap: 5px;
+  pointer-events: auto;
+}
+.interaction-tools button {
+  padding: 8px 10px;
+  font-size: 10px;
+  background: #faf9f4ed;
+}
+.interaction-tools button[aria-pressed='true'] {
+  background: #dce6d1;
+  border-color: #9bad8f;
+}
+.history-tools button {
+  font-size: 17px;
+  padding: 4px 10px;
+}
+@media (max-width: 700px) {
+  .interaction-tools {
+    top: 84px;
+    left: 18px;
+    right: 18px;
+    gap: 6px;
+  }
+  .interaction-tools button {
+    padding: 7px;
+    font-size: 9px;
+  }
+  .interaction-tools kbd {
+    display: none;
+  }
+  .history-tools button {
+    font-size: 14px;
+  }
+  .selection-actions {
+    gap: 5px;
+  }
+  .selection-actions button,
+  .selection-actions button span {
+    font-size: 10px;
+  }
+  .selection {
+    gap: 6px;
+  }
+}
 .scene-heading {
   position: absolute;
   z-index: 1;
@@ -331,7 +401,7 @@ h2 {
   color: #909580;
 }
 .selection button {
-  margin-left: auto;
+  margin-left: 0;
   display: flex;
   align-items: center;
   gap: 8px;
