@@ -10,6 +10,7 @@ import {
 } from 'three'
 import type { Item, WorldItem } from './placement'
 import { partsOnSurface } from './furnitureGeometry'
+import BinModel from './BinModel'
 import {
   FLOOR_TOP,
   panelToSurface,
@@ -154,17 +155,30 @@ function Model({
   onInteract,
   drawerMotion,
   surfaceY,
+  binActive,
+  binFeedbackAt,
 }: {
   item: Item
   interactive: boolean
   onInteract: (action: Interaction) => void
   drawerMotion: Map<string, number>
   surfaceY: number
+  binActive?: boolean
+  binFeedbackAt?: number
 }) {
   const kind = item.kind
   const wood = '#a87546',
     cream = '#e9dec9'
   switch (kind) {
+    case 'bin':
+      return (
+        <BinModel
+          id={item.id}
+          floorY={surfaceY}
+          active={binActive}
+          feedbackAt={binFeedbackAt}
+        />
+      )
     case 'sofa':
     case 'chair':
     case 'bed':
@@ -413,6 +427,8 @@ export default function Furniture({
   onInteract,
   drawerMotion,
   surfaceY = FLOOR_TOP,
+  binActive,
+  binFeedbackAt,
 }: {
   item: WorldItem
   selected: boolean
@@ -422,6 +438,8 @@ export default function Furniture({
   onInteract: (action: Interaction) => void
   drawerMotion: Map<string, number>
   surfaceY?: number
+  binActive?: boolean
+  binFeedbackAt?: number
 }) {
   return (
     <>
@@ -445,6 +463,8 @@ export default function Furniture({
             onInteract={onInteract}
             drawerMotion={drawerMotion}
             surfaceY={surfaceY}
+            binActive={binActive}
+            binFeedbackAt={binFeedbackAt}
           />
         </group>
       </group>

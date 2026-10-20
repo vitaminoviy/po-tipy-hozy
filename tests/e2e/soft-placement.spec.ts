@@ -93,7 +93,7 @@ test('cup on blanket, book on sofa and box on chair keep real support and follow
   await expect(page.getByTestId('pose')).toHaveText('X 2.80 · Z -1.30 · 0°')
   await page.keyboard.press('Control+y')
   await expect(page.getByTestId('pose')).toHaveText('X 2.80 · Z -1.05 · 0°')
-  await expect(page.locator('.item-list button')).toHaveCount(13)
+  await expect(page.locator('.item-list button')).toHaveCount(15)
   expect(errors).toEqual([])
 })
 

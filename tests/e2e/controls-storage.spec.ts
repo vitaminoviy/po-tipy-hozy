@@ -471,7 +471,7 @@ test('nightstand drawer stores book, closes with contents, follows host move, su
   await expect(page.getByTestId('attachment')).toHaveText(
     'В ящике 1: Прикроватная тумба',
   )
-  await expect(page.locator('.item-list button')).toHaveCount(13)
+  await expect(page.locator('.item-list button')).toHaveCount(15)
   await expect(
     page.getByRole('button', { name: 'Книга', exact: true }),
   ).toHaveCount(1)
@@ -548,7 +548,7 @@ test('mouse drop into an open large drawer, overlap rejection, cup/box storage a
   }
   await select(page, 'Книга')
   await expect(pose(page)).toHaveText(bookPose!)
-  await expect(page.locator('.item-list button')).toHaveCount(13)
+  await expect(page.locator('.item-list button')).toHaveCount(15)
   await select(page, 'Дубовый комод')
   await select(page, 'Достать: Чашка')
   await clickWorld(page, -2.46, 0.595, -0.27)

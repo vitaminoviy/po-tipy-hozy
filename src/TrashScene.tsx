@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Group, IcosahedronGeometry } from 'three'
 import { floorSupport } from './grounding'
 import type { Item } from './placement'
 import {
-  bins,
   trashTypes,
   disposalFrame,
   DISPOSAL_MS,
@@ -84,6 +83,9 @@ function TrashObject({
   pending,
   enabled,
   onPick,
+  onQuick,
+  onComplete,
+  quickEnabled,
   onHint,
 }: {
   trash: Trash
@@ -91,6 +93,9 @@ function TrashObject({
   pending: Disposal | null
   enabled: boolean
   onPick: (id: string) => void
+  onQuick: (id: string) => void
+  onComplete: (pending: Disposal) => void
+  quickEnabled: boolean
   onHint: (text: string) => void
 }) {
   const [hover, setHover] = useState(false)
@@ -98,16 +103,49 @@ function TrashObject({
   const [w, , d] = trashTypes[trash.kind].size
   const y = floorSupport({ x: trash.x, z: trash.z, w, d }, items)
   const animated = pending?.id === trash.id
-  useFrame(() => {
+  const { gl } = useThree()
+  const flight = useRef<{
+    pending: Disposal
+    elapsed: number
+    endpointDrawn: boolean
+    notified: boolean
+  } | null>(null)
+  useFrame((_, delta) => {
     if (!root.current) return
-    const bin = bins.find((b) => b.id === pending?.binId)
-    const pose = disposalFrame(
-      trash,
-      bin ?? trash,
-      animated ? (performance.now() - pending.startedAt) / DISPOSAL_MS : 0,
-    )
-    root.current.position.set(pose.x, y + pose.lift, pose.z)
+    if (!animated) {
+      root.current.position.set(trash.x, y, trash.z)
+      root.current.scale.setScalar(1)
+      flight.current = null
+      return
+    }
+    if (flight.current?.pending !== pending)
+      flight.current = {
+        pending,
+        elapsed: 0,
+        endpointDrawn: false,
+        notified: false,
+      }
+    else flight.current.elapsed += Math.min(delta, 0.05)
+    const active = flight.current,
+      t = Math.min(1, (active.elapsed * 1000) / DISPOSAL_MS)
+    const pose = disposalFrame(pending.from, pending.to, t)
+    root.current.position.set(pose.x, pose.y, pose.z)
     root.current.scale.setScalar(pose.scale)
+    gl.domElement.dataset.flight = JSON.stringify({
+      id: trash.id,
+      binId: pending.binId,
+      destination: [pending.to.x, pending.to.y, pending.to.z],
+      t,
+      position: [pose.x, pose.y, pose.z],
+      scale: pose.scale,
+      visible: root.current.visible,
+    })
+    if (t >= 1) {
+      if (active.endpointDrawn && !active.notified) {
+        active.notified = true
+        onComplete(pending)
+      } else active.endpointDrawn = true
+    }
   })
   if (trash.state === 'disposed') return null
   return (
@@ -118,7 +156,8 @@ function TrashObject({
         if (e.button !== 0 || e.buttons !== 1) return
         e.stopPropagation()
         if (animated) return
-        if (enabled) onPick(trash.id)
+        if (e.shiftKey && quickEnabled) onQuick(trash.id)
+        else if (enabled) onPick(trash.id)
         else
           onHint(
             pending
@@ -138,7 +177,7 @@ function TrashObject({
           <meshBasicMaterial color="#60765d" depthWrite={false} />
         </mesh>
       )}
-      {!animated && enabled && (
+      {!animated && (enabled || quickEnabled) && (
         <mesh
           position={[0, 0.14, 0]}
           userData={{ cleaningTarget: 'trash', id: trash.id }}
@@ -162,91 +201,25 @@ function TrashObject({
     </group>
   )
 }
-function BinObject({
-  bin,
-  items,
-  pending,
-  feedback,
-  onBin,
-}: {
-  bin: (typeof bins)[number]
-  items: Item[]
-  pending: Disposal | null
-  feedback: { id: string; at: number } | null
-  onBin: (id: string) => void
-}) {
-  const [hover, setHover] = useState(false)
-  const root = useRef<Group>(null)
-  const y = floorSupport({ ...bin, w: 0.46, d: 0.46 }, items)
-  useFrame(() => {
-    if (!root.current) return
-    const t =
-      feedback?.id === bin.id
-        ? Math.min(1, (performance.now() - feedback.at) / 280)
-        : 1
-    root.current.scale.setScalar(1 + Math.sin(t * Math.PI) * 0.06)
-  })
-  return (
-    <group ref={root} position={[bin.x, y, bin.z]}>
-      <mesh position={[0, 0.225, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.22, 0.18, 0.45, 16, 1, true]} />
-        <meshStandardMaterial color="#89937f" side={2} />
-      </mesh>
-      <mesh position={[0, 0.012, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.18, 0.18, 0.024, 16]} />
-        <meshStandardMaterial color="#4e6955" />
-      </mesh>
-      <mesh position={[0, 0.45, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.22, 0.016, 6, 24]} />
-        <meshStandardMaterial
-          color={hover || pending?.binId === bin.id ? '#60765d' : '#c0956c'}
-        />
-      </mesh>
-      <mesh
-        position={[0, 0.25, 0]}
-        userData={{ cleaningTarget: 'bin', id: bin.id }}
-        onPointerOver={(e) => {
-          if (!e.buttons) {
-            e.stopPropagation()
-            setHover(true)
-          }
-        }}
-        onPointerOut={() => setHover(false)}
-        onPointerDown={(e) => {
-          if (e.button === 0 && e.buttons === 1) {
-            e.stopPropagation()
-            onBin(bin.id)
-          }
-        }}
-      >
-        <cylinderGeometry args={[0.28, 0.28, 0.5, 16]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0}
-          depthWrite={false}
-          colorWrite={false}
-        />
-      </mesh>
-    </group>
-  )
-}
 export default function Cleaning({
   trash,
   items,
   pending,
   enabled,
-  feedback,
   onPick,
-  onBin,
+  onQuick,
+  onComplete,
+  quickEnabled,
   onHint,
 }: {
   trash: Trash[]
   items: Item[]
   pending: Disposal | null
   enabled: boolean
-  feedback: { id: string; at: number } | null
   onPick: (id: string) => void
-  onBin: (id: string) => void
+  onQuick: (id: string) => void
+  onComplete: (pending: Disposal) => void
+  quickEnabled: boolean
   onHint: (text: string) => void
 }) {
   return (
@@ -259,17 +232,10 @@ export default function Cleaning({
           pending={pending}
           enabled={enabled && !pending}
           onPick={onPick}
+          onQuick={onQuick}
+          onComplete={onComplete}
+          quickEnabled={quickEnabled && !pending}
           onHint={onHint}
-        />
-      ))}
-      {bins.map((bin) => (
-        <BinObject
-          key={bin.id}
-          bin={bin}
-          items={items}
-          pending={pending}
-          feedback={feedback}
-          onBin={onBin}
         />
       ))}
     </group>

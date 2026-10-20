@@ -1,5 +1,5 @@
 import { supportHeight } from './grounding'
-import { bins } from './cleaning'
+import { bins, type Room } from './cleaning'
 import {
   softSurfaceZones,
   furnitureVolumes,
@@ -8,6 +8,7 @@ import {
 } from './placementGeometry'
 
 export type Kind =
+  | 'bin'
   | 'sofa'
   | 'table'
   | 'chair'
@@ -33,6 +34,7 @@ export type Item = {
   drawerIndex?: number
   drawers?: [boolean, boolean, boolean]
   lampOn?: boolean
+  binRoom?: Room
 }
 export const catalog: Record<
   Kind,
@@ -47,6 +49,15 @@ export const catalog: Record<
     surface?: { height: number; size: [number, number] }
   }
 > = {
+  bin: {
+    name: 'Мусорное ведро',
+    size: [0.472, 0.472],
+    color: '#89937f',
+    icon: '▥',
+    category: 'decor',
+    shape: 'circle',
+    height: 0.466,
+  },
   sofa: {
     name: 'Диван «Мох»',
     size: [2.5, 1.1],
@@ -195,9 +206,21 @@ export const initialItems: Item[] = [
   },
   { id: 'cup', kind: 'cup', x: 0.34, z: 0.13, rotation: 0, surfaceId: 'table' },
   { id: 'box', kind: 'box', x: -0.35, z: 0, rotation: 0, surfaceId: 'cabinet' },
+  ...bins.map((bin) => ({
+    ...bin,
+    kind: 'bin' as const,
+    binRoom: bin.room,
+    rotation: 0,
+  })),
 ]
 export const isSmall = (item: Item) =>
   catalog[item.kind].category === 'surfaceDecor'
+export const itemName = (item: Item) =>
+  item.kind === 'bin'
+    ? item.binRoom === 'living'
+      ? 'Ведро гостиной'
+      : 'Ведро спальни'
+    : catalog[item.kind].name
 export type WorldItem = Item & { y: number }
 export const DRAWER_TRAVEL = 0.28
 export function drawerSpecs(item: Item) {
@@ -531,25 +554,16 @@ export function validatePlacement(item: Item, items: Item[]): string | null {
     return 'Предмет должен находиться внутри дома'
   if (!(right <= -0.12 + epsilon || left >= 0.12 - epsilon))
     return 'Предмет должен целиком помещаться в одной комнате'
+  if (
+    item.kind === 'bin' &&
+    (item.binRoom === 'living' ? right > -0.12 : left < 0.12)
+  )
+    return 'Ведро должно оставаться в своей комнате'
   const floorDecor = catalog[item.kind].category === 'floorDecor'
   if (!floorDecor && left < 0.5 && right > -0.5 && front > 0.8 && back < 2.3)
     return 'Оставьте свободным проход между комнатами'
   if (!floorDecor && right > 1.7 && left < 3.1 && front > 3.0)
     return 'Оставьте свободным вход в дом'
-  if (
-    !floorDecor &&
-    bins.some(
-      (bin) =>
-        boundsDistance(collisionBounds(item), {
-          ...bin,
-          w: 0.472,
-          d: 0.472,
-          circle: true,
-        }) <
-        (small ? CONTACT_GAP : 0.02) - epsilon,
-    )
-  )
-    return 'Здесь стоит мусорное ведро'
   for (const other of items) {
     if (other.id === item.id) continue
     if (small || isSmall(other)) {

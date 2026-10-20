@@ -11,6 +11,7 @@ import {
   clearTrashSelection,
   selectTrash,
   disposeTrash,
+  availableBins,
   type Trash,
 } from './cleaning'
 export { DRAWER_TRAVEL } from './placement'
@@ -29,6 +30,7 @@ export type Action =
   | { type: 'drawer'; id: string; index: number }
   | { type: 'lamp'; id: string }
   | { type: 'trash-select'; id: string }
+  | { type: 'trash-start'; id: string }
   | { type: 'trash-cancel' }
   | { type: 'trash-dispose'; id: string; binId: string }
   | { type: 'undo' | 'redo' }
@@ -64,10 +66,28 @@ export function historyReducer(state: History, action: Action): History {
   })
   if (action.type === 'trash-select')
     return { ...state, trash: selectTrash(state.trash, action.id) }
+  if (action.type === 'trash-start') {
+    if (
+      state.trash.some((t) => t.state === 'disposing') ||
+      !state.trash.some((t) => t.id === action.id && t.state !== 'disposed')
+    )
+      return state
+    return {
+      ...state,
+      trash: clearTrashSelection(state.trash).map((t) =>
+        t.id === action.id ? { ...t, state: 'disposing' } : t,
+      ),
+    }
+  }
   if (action.type === 'trash-cancel')
     return { ...state, trash: clearTrashSelection(state.trash) }
   if (action.type === 'trash-dispose') {
-    const trash = disposeTrash(state.trash, action.id, action.binId)
+    const trash = disposeTrash(
+      state.trash,
+      action.id,
+      action.binId,
+      availableBins(state.present),
+    )
     if (trash === state.trash) return state
     return {
       ...state,

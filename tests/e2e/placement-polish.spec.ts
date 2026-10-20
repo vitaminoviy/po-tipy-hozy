@@ -95,7 +95,7 @@ test('cup, book and box can use floor and rugs, reject real collisions, and retu
   await select(page, 'Достать: Чашка')
   await drop(page, -1.5, 0.015, 0)
   await expect(page.getByTestId('attachment')).toHaveText('На полу')
-  await expect(page.locator('.item-list button')).toHaveCount(13)
+  await expect(page.locator('.item-list button')).toHaveCount(15)
   await expect(
     page.getByRole('button', { name: 'Чашка', exact: true }),
   ).toHaveCount(1)

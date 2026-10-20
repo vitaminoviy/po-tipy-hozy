@@ -179,29 +179,34 @@ test('selection and cancellation never create history entries or erase redo', ()
   assert.equal(state.future.length, 1)
   assert.ok(state.trash.every((t) => t.state === 'room'))
 })
-test('disposal pose shrinks monotonically and is bounded even after an interrupted long frame', () => {
+test('disposal follows a bounded arc all the way to the opening and stays full size in mid-flight', () => {
+  const from = { ...initialTrash[0], y: 0.015 },
+    to = { ...bins[0], y: 0.195 }
   let previous = 1
   for (let n = 0; n <= 100; n++) {
-    const frame = disposalFrame(initialTrash[0], bins[0], n / 100)
+    const frame = disposalFrame(from, to, n / 100)
     assert.ok(frame.scale <= previous && frame.scale >= 0)
-    assert.ok(frame.lift >= 0 && frame.lift <= 0.15)
-    assert.ok(
-      Math.hypot(frame.x - initialTrash[0].x, frame.z - initialTrash[0].z) <=
-        0.550001,
-    )
+    assert.ok(frame.y >= from.y && frame.y <= 2.2)
     previous = frame.scale
   }
-  assert.equal(disposalFrame(initialTrash[0], bins[0], -1).scale, 1)
-  assert.equal(disposalFrame(initialTrash[0], bins[0], 100).scale, 0)
+  assert.equal(disposalFrame(from, to, -1).scale, 1)
+  const mid = disposalFrame(from, to, 0.5)
+  assert.equal(mid.scale, 1)
+  assert.ok(mid.y > 0.8)
+  assert.ok(Math.hypot(mid.x - from.x, mid.z - from.z) > 0.55)
+  const end = disposalFrame(from, to, 100)
+  assert.equal(end.x, to.x)
+  assert.equal(end.z, to.z)
+  assert.equal(end.y, to.y)
 })
 test('bins reject floor furniture and decor overlaps but allow rugs; fresh sessions reset cleanup', () => {
   for (const kind of ['chair', 'cup', 'book', 'box'] as const)
     assert.match(
       validatePlacement(
         { ...bins[1], id: 'probe', kind, x: 4.3, rotation: 0 },
-        [],
+        initialItems,
       )!,
-      /ведро/,
+      /другой предмет|отступ|ведро/,
     )
   assert.equal(
     validatePlacement(

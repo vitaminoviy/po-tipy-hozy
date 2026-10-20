@@ -85,6 +85,10 @@ export function furnitureVolumes(item: Item, floor: number): CollisionVolume[] {
         box([0, 0.8, 0], [0.035, 1.5, 0.035]),
         { ...box([0, 1.55, 0], [0.64, 0.4, 0.64]), circle: true },
       ]
+    case 'bin':
+      return [
+        { ...box([0, floor + 0.233, 0], [0.472, 0.466, 0.472]), circle: true },
+      ]
     case 'plant':
       return [
         { ...box([0, 0.24, 0], [0.54, 0.48, 0.54]), circle: true },

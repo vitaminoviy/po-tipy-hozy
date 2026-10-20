@@ -4,6 +4,7 @@ import {
   catalog,
   categoryNames,
   isSmall,
+  itemName,
   worldPose,
   validatePlacement,
   drawerSpecs,
@@ -16,13 +17,14 @@ import {
   type Mode,
   type Interaction,
 } from './history'
+import { floorSupport } from './grounding'
 import { isEditing, primaryInteraction } from './controls'
 import {
-  bins,
+  availableBins,
+  nearestBin,
   trashTypes,
   cleaningProgress,
   roomNames,
-  DISPOSAL_MS,
   type Disposal,
 } from './cleaning'
 import {
@@ -50,24 +52,15 @@ export default function App() {
   const selectedTrash = history.trash.find((t) => t.state === 'selected')
   const [disposal, setDisposal] = useState<Disposal | null>(null)
   const disposalRef = useRef<Disposal | null>(null)
-  const disposalTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [binFeedback, setBinFeedback] = useState<{
     id: string
     at: number
   } | null>(null)
   const cancelCleaning = useCallback(() => {
-    if (disposalTimer.current !== null) clearTimeout(disposalTimer.current)
-    disposalTimer.current = null
     disposalRef.current = null
     setDisposal(null)
     dispatch({ type: 'trash-cancel' })
   }, [])
-  useEffect(
-    () => () => {
-      if (disposalTimer.current !== null) clearTimeout(disposalTimer.current)
-    },
-    [],
-  )
   const [mode, setMode] = useState<Mode>('move')
   const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -134,6 +127,12 @@ export default function App() {
     (id: string) => {
       const target = items.find((i) => i.id === id)
       if (!target) return
+      if (target.kind === 'bin' && disposalRef.current?.binId === id) {
+        setMessage(
+          'Ведро принимает мусор — дождитесь завершения или нажмите Esc',
+        )
+        return
+      }
       cancelCleaning()
       if (target.drawerIndex !== undefined) {
         const parent = items.find((i) => i.id === target.surfaceId)
@@ -203,47 +202,93 @@ export default function App() {
       `Подобрано: ${trashTypes[target.kind].name}. Нажмите на ведро; Esc — вернуть.`,
     )
   }
+  const beginDisposal = (trashId: string, binId: string) => {
+    if (disposalRef.current) {
+      setMessage('Дождитесь окончания полёта; Esc — отменить')
+      return
+    }
+    const target = history.trash.find(
+      (t) => t.id === trashId && (t.state === 'room' || t.state === 'selected'),
+    )
+    const bin = availableBins(items).find((b) => b.id === binId)
+    if (!target || !bin || draft) {
+      setMessage('Нет доступного ведра. Сначала завершите перенос.')
+      return
+    }
+    const [w, , d] = trashTypes[target.kind].size
+    const pending: Disposal = {
+      id: trashId,
+      binId,
+      from: {
+        x: target.x,
+        z: target.z,
+        y: floorSupport({ ...target, w, d }, items),
+      },
+      to: {
+        x: bin.x,
+        z: bin.z,
+        y: floorSupport({ ...bin, w: 0.472, d: 0.472 }, items) + 0.18,
+      },
+    }
+    disposalRef.current = pending
+    setSelected(null)
+    dispatch({ type: 'trash-start', id: trashId })
+    setDisposal(pending)
+    setMessage('Мусор летит в ведро… Esc — отменить')
+  }
+  const finishDisposal = (pending: Disposal) => {
+    if (disposalRef.current !== pending) return
+    const target = history.trash.find(
+      (t) => t.id === pending.id && t.state === 'disposing',
+    )
+    if (!target) return
+    dispatch({ type: 'trash-dispose', id: pending.id, binId: pending.binId })
+    disposalRef.current = null
+    setDisposal(null)
+    setBinFeedback({ id: pending.binId, at: performance.now() })
+    const progress = cleaningProgress(history.trash, target.room)
+    setMessage(
+      progress.disposed + 1 === progress.total
+        ? 'Комната очищена от мусора! ' + roomNames[target.room] + '.'
+        : 'Мусор убран. Shift + ЛКМ — быстро убрать следующий; Ctrl+Z — вернуть.',
+    )
+  }
   const useBin = (binId: string) => {
     if (disposalRef.current) return
-    if (
-      !selectedTrash ||
-      mode !== 'interact' ||
-      draft ||
-      !bins.some((b) => b.id === binId)
-    ) {
+    if (!selectedTrash || mode !== 'interact' || draft) {
       setMessage(
-        'Ведро принимает мусор: включите «Взаимодействие» и выберите мусор на полу.',
+        'Ведро принимает мусор: выберите его в режиме «Взаимодействие».',
       )
       return
     }
-    const pending = {
-      id: selectedTrash.id,
-      binId,
-      startedAt: performance.now(),
+    beginDisposal(selectedTrash.id, binId)
+  }
+  const quickClean = (id: string) => {
+    if (disposalRef.current) {
+      setMessage('Дождитесь окончания полёта; Esc — отменить')
+      return
     }
-    disposalRef.current = pending
-    setDisposal(pending)
-    setMessage('Мусор отправляется в ведро…')
-    disposalTimer.current = setTimeout(() => {
-      if (disposalRef.current !== pending) return
-      dispatch({ type: 'trash-dispose', id: pending.id, binId })
-      disposalRef.current = null
-      disposalTimer.current = null
-      setDisposal(null)
-      setBinFeedback({ id: binId, at: performance.now() })
-      const progress = cleaningProgress(history.trash, selectedTrash.room)
-      setMessage(
-        progress.disposed + 1 === progress.total
-          ? `Комната очищена от мусора! ${roomNames[selectedTrash.room]}.`
-          : 'Мусор убран. Выберите следующий предмет; Ctrl+Z — вернуть.',
-      )
-    }, DISPOSAL_MS)
+    const target = history.trash.find(
+      (t) => t.id === id && t.state !== 'disposed',
+    )
+    if (!target || draft) return
+    const bin = nearestBin(target, items)
+    if (!bin) {
+      setMessage('В этой комнате нет доступного ведра. Мусор остался на месте.')
+      return
+    }
+    beginDisposal(id, bin.id)
   }
   const selectItem = (id: string | null) => {
+    if (id && disposalRef.current?.binId === id) {
+      setMessage('Ведро принимает мусор — дождитесь завершения или нажмите Esc')
+      return false
+    }
     if (selectedTrash || disposal)
       setMessage('Подбор отменён — мусор остался в комнате')
     cancelCleaning()
     setSelected(id)
+    return true
   }
   const rotate = useCallback(
     (direction = 1) => {
@@ -345,7 +390,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.4
+          <i /> ПРОТОТИП 0.4.1
         </span>
       </header>
       <div className="workspace">
@@ -368,15 +413,15 @@ export default function App() {
             {items.map((i) => (
               <button
                 key={i.id}
-                aria-label={catalog[i.kind].name}
+                aria-label={itemName(i)}
                 aria-pressed={selected === i.id}
                 className={'item ' + (selected === i.id ? 'active' : '')}
                 onClick={() => {
                   if (!draft) {
-                    selectItem(i.id)
-                    setMessage(
-                      'E — взаимодействовать; для переноса перетащите мышью или нажмите «Переместить»',
-                    )
+                    if (selectItem(i.id))
+                      setMessage(
+                        'E — взаимодействовать; для переноса перетащите мышью или нажмите «Переместить»',
+                      )
                   }
                 }}
               >
@@ -390,7 +435,7 @@ export default function App() {
                   {catalog[i.kind].icon}
                 </span>
                 <span>
-                  {catalog[i.kind].name}
+                  {itemName(i)}
                   <small>
                     {worldPose(i, items).x < 0 ? 'Гостиная' : 'Спальня'} ·{' '}
                     {categoryNames[catalog[i.kind].category]}
@@ -484,6 +529,8 @@ export default function App() {
               binFeedback={binFeedback}
               onTrashPick={pickTrash}
               onBin={useBin}
+              onQuickClean={quickClean}
+              onDisposalComplete={finishDisposal}
             />
           </div>
           <div className="room-labels" aria-label="Прогресс уборки">
@@ -542,16 +589,17 @@ export default function App() {
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                Уборка: включите «Взаимодействие», нажмите на мусор, затем на
-                ведро. Esc отменяет подбор; Ctrl+Z возвращает выброшенный мусор.
-                E — действие выбранного предмета: ящик, торшер или взять вещь.
-                Tab — переключить режим для кликов мышью. Enter — установить;
-                Esc — отменить. Shift+WASD — ускорение камеры; Home — исходный
-                вид. Книгу, чашку и коробку можно взять и поставить на пол,
-                ковёр, стол, тумбу, комод, матрас или сиденье либо в открытый
-                ящик. Для удобства есть кнопки «В ящик»; содержимое закрытого
-                ящика можно достать после его открытия. Ctrl+Z — отмена; Ctrl+Y
-                / Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
+                Shift + ЛКМ по мусору — быстрая уборка в любом режиме. Уборка:
+                включите «Взаимодействие», нажмите на мусор, затем на ведро. Esc
+                отменяет подбор; Ctrl+Z возвращает выброшенный мусор. E —
+                действие выбранного предмета: ящик, торшер или взять вещь. Tab —
+                переключить режим для кликов мышью. Enter — установить; Esc —
+                отменить. Shift+WASD — ускорение камеры; Home — исходный вид.
+                Книгу, чашку и коробку можно взять и поставить на пол, ковёр,
+                стол, тумбу, комод, матрас или сиденье либо в открытый ящик. Для
+                удобства есть кнопки «В ящик»; содержимое закрытого ящика можно
+                достать после его открытия. Ctrl+Z — отмена; Ctrl+Y /
+                Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
                 линиями движение свободное. Зелёный контур — можно поставить,
                 красный — нельзя. Между мебелью — зазор 2 см. Для ковра под
                 мебелью: выберите его в списке, нажмите «Переместить», наведите
@@ -567,7 +615,7 @@ export default function App() {
             <div>
               <small>{item ? 'ВЫБРАННЫЙ ПРЕДМЕТ' : 'ПОПРОБУЙТЕ'}</small>
               <strong>
-                {item ? catalog[item.kind].name : 'Поставьте всё по-своему'}
+                {item ? itemName(item) : 'Поставьте всё по-своему'}
               </strong>
               <span>
                 {shownItem ? (
@@ -661,7 +709,7 @@ export default function App() {
                             )
                           }}
                         >
-                          В ящик {index + 1}: {catalog[parent.kind].name}
+                          В ящик {index + 1}: {itemName(parent)}
                         </button>
                       ),
                   ),
@@ -732,7 +780,8 @@ export default function App() {
             : message}
         </span>
         <span>
-          WASD — камера <b>·</b> СКМ — обзор <b>·</b> ПКМ — сдвиг
+          Shift + ЛКМ — мусор <b>·</b> WASD — камера <b>·</b> СКМ — обзор{' '}
+          <b>·</b> ПКМ — сдвиг
         </span>
       </footer>
     </div>

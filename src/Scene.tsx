@@ -1,4 +1,10 @@
-import { useEffect, useRef, type ComponentRef, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+} from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
@@ -96,6 +102,8 @@ type Props = {
   binFeedback: { id: string; at: number } | null
   onTrashPick: (id: string) => void
   onBin: (id: string) => void
+  onQuickClean: (id: string) => void
+  onDisposalComplete: (pending: Disposal) => void
 }
 function Interior(p: Props) {
   const { camera, gl, raycaster, size, scene } = useThree()
@@ -119,6 +127,10 @@ function Interior(p: Props) {
   const current = useRef(p)
   current.current = p
   const keys = useRef(new Set<string>())
+  const [quickHeld, setQuickHeld] = useState(false)
+  useEffect(() => {
+    if (!p.disposal) delete gl.domElement.dataset.flight
+  }, [p.disposal, gl])
   const cameraVelocity = useRef(new Vector3())
   const drawerMotion = useRef(new Map<string, number>())
   useFrame((_, delta) => {
@@ -355,6 +367,8 @@ function Interior(p: Props) {
         )
       ) {
         keys.current.add(e.code)
+        if (e.code === 'ShiftLeft' || e.code === 'ShiftRight')
+          setQuickHeld(true)
         e.preventDefault()
       }
       if (e.code === 'Home') {
@@ -373,15 +387,28 @@ function Interior(p: Props) {
       }
       if (e.key === 'Escape') cancel()
     }
-    const release = (e: KeyboardEvent) => keys.current.delete(e.code)
+    const release = (e: KeyboardEvent) => {
+      keys.current.delete(e.code)
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight')
+        setQuickHeld(
+          keys.current.has('ShiftLeft') || keys.current.has('ShiftRight'),
+        )
+    }
     const blur = () => {
       keys.current.clear()
+      setQuickHeld(false)
       cameraVelocity.current.set(0, 0, 0)
       cancel()
     }
     // Capture before R3F raycasting: selected rugs remain placeable under furniture.
     const place = (e: PointerEvent) => {
       const props = current.current
+      if (e.button === 0 && e.shiftKey && props.disposal) {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        props.onMessage('Дождитесь окончания полёта; Esc — отменить')
+        return
+      }
       if (!props.placing || e.button !== 0 || e.buttons !== 1) return
       e.stopImmediatePropagation()
       e.preventDefault()
@@ -389,7 +416,11 @@ function Interior(p: Props) {
       if (
         raycaster
           .intersectObjects(scene.children, true)
-          .some((hit) => hit.object.userData.cleaningTarget === 'bin')
+          .some(
+            (hit) =>
+              hit.object.userData.cleaningTarget === 'bin' &&
+              hit.object.userData.id !== props.selected,
+          )
       ) {
         props.onMessage(
           'Ведро принимает только мусор. Для предмета выберите другое место.',
@@ -435,6 +466,16 @@ function Interior(p: Props) {
     if (p.placing) return
     e.stopPropagation()
     const item = p.items.find((i) => i.id === shown.id)!
+    if (p.disposal?.binId === item.id) {
+      p.onMessage(
+        'Ведро принимает мусор — дождитесь завершения или нажмите Esc',
+      )
+      return
+    }
+    if (item.kind === 'bin' && p.mode === 'interact') {
+      p.onBin(item.id)
+      return
+    }
     p.onSelect(item.id)
     if (p.mode === 'interact') {
       if (isSmall(item)) p.onTake(item.id)
@@ -494,10 +535,11 @@ function Interior(p: Props) {
         trash={p.trash}
         items={p.items}
         pending={p.disposal}
-        feedback={p.binFeedback}
         enabled={p.mode === 'interact' && !p.draft && !p.placing}
         onPick={p.onTrashPick}
-        onBin={p.onBin}
+        quickEnabled={quickHeld && !p.draft && !p.placing}
+        onQuick={p.onQuickClean}
+        onComplete={p.onDisposalComplete}
         onHint={p.onMessage}
       />
       {/** Children resolve against the preview parent so attachments move atomically. */}
@@ -535,6 +577,10 @@ function Interior(p: Props) {
               mode={p.mode}
               drawerMotion={drawerMotion.current}
               surfaceY={supportHeight(shown, shownItems)}
+              binActive={p.disposal?.binId === item.id}
+              binFeedbackAt={
+                p.binFeedback?.id === item.id ? p.binFeedback.at : undefined
+              }
               onInteract={(action) => {
                 p.onSelect(item.id)
                 p.onInteract(item.id, action)
@@ -569,7 +615,8 @@ export default function Scene(p: Props) {
       dpr={[1, 1.75]}
       camera={{ position: [12, 11, 15], zoom: 46, near: 0.1, far: 250 }}
       onPointerMissed={(e) => {
-        if (e.button === 0 && !p.draft && !p.placing) p.onSelect(null)
+        if (e.button === 0 && !p.draft && !p.placing && !p.disposal)
+          p.onSelect(null)
       }}
       onContextMenu={(e) => e.preventDefault()}
       fallback={
