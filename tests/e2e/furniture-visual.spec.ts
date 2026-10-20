@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { Vector3 } from 'three'
+import { waitForCameraStill } from './support/camera'
 
 async function camera(page: Page) {
   return JSON.parse(
@@ -14,7 +15,7 @@ async function camera(page: Page) {
 test('upholstered models: mouse orbit in both axes, two zoom levels and stable views', async ({
   page,
 }) => {
-  test.setTimeout(60000)
+  test.setTimeout(120000)
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto('/')
@@ -61,7 +62,7 @@ test('upholstered models: mouse orbit in both axes, two zoom levels and stable v
         { steps: 12 },
       )
       await page.mouse.up({ button: 'right' })
-      await page.waitForTimeout(600)
+      await waitForCameraStill(page)
       expect(
         new Vector3()
           .fromArray((await camera(page)).target)
@@ -69,7 +70,7 @@ test('upholstered models: mouse orbit in both axes, two zoom levels and stable v
       ).toBeLessThan(0.02)
       await page.mouse.move(center.x, center.y)
       for (let n = 0; n < 10; n++) await page.mouse.wheel(0, wheel)
-      await page.waitForTimeout(200)
+      await waitForCameraStill(page)
       zooms.push((await camera(page)).zoom)
       for (let view = 0; view < 4; view++) {
         await page.mouse.move(center.x, center.y)
@@ -80,7 +81,7 @@ test('upholstered models: mouse orbit in both axes, two zoom levels and stable v
           { steps: 16 },
         )
         await page.mouse.up({ button: 'middle' })
-        await page.waitForTimeout(800)
+        await waitForCameraStill(page)
         const first = await camera(page)
         await canvas.screenshot({
           path: `artifacts/furniture-${kind}-${level}-${view}.png`,

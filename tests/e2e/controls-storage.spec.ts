@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
+import { waitForCameraStill } from './support/camera'
 
 const select = (page: Page, name: string) =>
   page.getByRole('button', { name, exact: true }).click()
@@ -54,6 +55,7 @@ const distance = (a: number[], b: number[]) =>
 test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing do not manipulate furniture', async ({
   page,
 }) => {
+  test.setTimeout(60000)
   await open(page)
   await select(page, 'Дубовый комод')
   const originalPose = await pose(page).textContent(),
@@ -87,7 +89,7 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   await page.mouse.down({ button: 'middle' })
   await page.mouse.move(1080, 650, { steps: 12 })
   await page.mouse.up({ button: 'middle' })
-  await page.waitForTimeout(500)
+  await waitForCameraStill(page)
   const yaw = await camera(page)
   expect(distance(yaw.position, initial.position)).toBeGreaterThan(2)
   await hold(page, 'w')
@@ -109,7 +111,7 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   await page.mouse.down({ button: 'middle' })
   await page.mouse.move(1100, 700, { steps: 12 })
   await page.mouse.up({ button: 'middle' })
-  await page.waitForTimeout(500)
+  await waitForCameraStill(page)
   const orbited = await camera(page)
   expect(distance(orbited.target, initial.target)).toBeLessThan(0.001)
   expect(distance(orbited.position, initial.position)).toBeGreaterThan(2)
@@ -122,7 +124,7 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   await page.mouse.down({ button: 'right' })
   await page.mouse.move(1000, 600, { steps: 12 })
   await page.mouse.up({ button: 'right' })
-  await page.waitForTimeout(500)
+  await waitForCameraStill(page)
   const panned = await camera(page)
   expect(distance(panned.target, orbited.target)).toBeGreaterThan(0.2)
   expect(panned.target[1]).toBe(0)
@@ -152,7 +154,7 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
     await page.mouse.down({ button: 'middle' })
     await page.mouse.move(950, y, { steps: 20 })
     await page.mouse.up({ button: 'middle' })
-    await page.waitForTimeout(600)
+    await waitForCameraStill(page)
     const tilted = await camera(page)
     expect(
       Math.acos(
@@ -175,6 +177,7 @@ test('camera WASD, shift, yaw, middle orbit, right pan, bounds and text editing 
   expect(Math.abs(bounded.target[0])).toBeLessThanOrEqual(4)
   expect(Math.abs(bounded.target[2])).toBeLessThanOrEqual(3)
   await page.keyboard.press('Home')
+  await waitForCameraStill(page)
   await page.evaluate(() => {
     const input = document.createElement('input')
     input.id = 'typing-test'

@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal DisableDelayedExpansion
 chcp 65001 >nul
 pushd "%~dp0"
 if errorlevel 1 (
@@ -21,7 +21,7 @@ if errorlevel 1 (
   popd
   exit /b 1
 )
-node "%~dp0scripts\launch-game.mjs"
+node "%~dp0scripts\launch-game.mjs" --open-browser %*
 set "GAME_EXIT=%ERRORLEVEL%"
 if not "%GAME_EXIT%"=="0" pause
 popd
