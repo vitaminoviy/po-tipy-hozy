@@ -4,6 +4,7 @@ import {
   drawerSpecs,
   type Item,
 } from './placement'
+import { createDirt, type DirtState } from './wiping'
 
 import { DRAWER_TRAVEL } from './placement'
 import {
@@ -18,14 +19,16 @@ export { DRAWER_TRAVEL } from './placement'
 export type Mode = 'move' | 'interact'
 export type Interaction =
   { kind: 'drawer'; index: number } | { kind: 'lamp' } | { kind: 'take' }
-type Snapshot = { items: Item[]; trash: Trash[] }
+type Snapshot = { items: Item[]; trash: Trash[]; dirt: DirtState[] }
 export type History = {
   past: Snapshot[]
   present: Item[]
   trash: Trash[]
+  dirt: DirtState[]
   future: Snapshot[]
 }
 export type Action =
+  | { type: 'wipe'; id: string; mask: Uint8Array }
   | { type: 'change'; item: Item }
   | { type: 'drawer'; id: string; index: number }
   | { type: 'lamp'; id: string }
@@ -46,6 +49,7 @@ export function createHistory(
     })),
     future: [],
     trash: trash.map((t) => ({ ...t })),
+    dirt: createDirt(),
   }
 }
 export function drawerOpeningError(item: Item, items: Item[]): string | null {
@@ -63,7 +67,25 @@ export function historyReducer(state: History, action: Action): History {
   const snapshot = (): Snapshot => ({
     items: state.present,
     trash: clearTrashSelection(state.trash),
+    dirt: state.dirt,
   })
+  if (action.type === 'wipe') {
+    const before = state.dirt.find((d) => d.id === action.id)
+    if (
+      !before ||
+      action.mask.length !== before.mask.length ||
+      !before.mask.some((v, i) => v !== action.mask[i])
+    )
+      return state
+    return {
+      ...state,
+      dirt: state.dirt.map((d) =>
+        d.id === action.id ? { id: d.id, mask: action.mask.slice() } : d,
+      ),
+      past: [...state.past, snapshot()].slice(-100),
+      future: [],
+    }
+  }
   if (action.type === 'trash-select')
     return { ...state, trash: selectTrash(state.trash, action.id) }
   if (action.type === 'trash-start') {
@@ -102,6 +124,7 @@ export function historyReducer(state: History, action: Action): History {
       past: state.past.slice(0, -1),
       present: state.past.at(-1)!.items,
       trash: state.past.at(-1)!.trash,
+      dirt: state.past.at(-1)!.dirt,
       future: [snapshot(), ...state.future],
     }
   }
@@ -111,6 +134,7 @@ export function historyReducer(state: History, action: Action): History {
       past: [...state.past, snapshot()].slice(-100),
       present: state.future[0].items,
       trash: state.future[0].trash,
+      dirt: state.future[0].dirt,
       future: state.future.slice(1),
     }
   }
@@ -152,6 +176,7 @@ export function historyReducer(state: History, action: Action): History {
     past: [...state.past, snapshot()].slice(-100),
     present,
     trash: clearTrashSelection(state.trash),
+    dirt: state.dirt,
     future: [],
   }
 }

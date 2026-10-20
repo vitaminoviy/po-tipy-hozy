@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useReducer, useRef } from 'react'
 import Scene from './Scene'
+import { cleanFraction, dirtPatches, isClean } from './wiping'
 import {
   catalog,
   categoryNames,
@@ -49,6 +50,14 @@ export default function App() {
     createHistory(),
   )
   const items = history.present
+  const floorOutputs = useRef(new Map<string, HTMLSpanElement>())
+  useEffect(() => {
+    for (const d of history.dirt) {
+      const output = floorOutputs.current.get(d.id)
+      if (output)
+        output.textContent = `${Math.floor(cleanFraction(d.mask) * 100)}%`
+    }
+  }, [history.dirt])
   const selectedTrash = history.trash.find((t) => t.state === 'selected')
   const [disposal, setDisposal] = useState<Disposal | null>(null)
   const disposalRef = useRef<Disposal | null>(null)
@@ -390,7 +399,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.4.1
+          <i /> ПРОТОТИП 0.5
         </span>
       </header>
       <div className="workspace">
@@ -508,6 +517,27 @@ export default function App() {
           </div>
           <div className={'scene' + (placing ? ' placing' : '')}>
             <Scene
+              dirt={history.dirt}
+              onWipeBegin={() => {
+                cancelCleaning()
+                setSelected(null)
+                setMessage(
+                  'Удерживайте ЛКМ и двигайте тряпку по грязи; Esc — отменить жест',
+                )
+              }}
+              onWipeCommit={(id, mask) => {
+                dispatch({ type: 'wipe', id, mask })
+                setMessage(
+                  isClean(mask)
+                    ? 'Поверхность очищена!'
+                    : 'Протирание завершено. Продолжайте с оставшихся участков; Ctrl+Z — отменить жест.',
+                )
+              }}
+              onWipeProgress={(id, fraction) => {
+                const output = floorOutputs.current.get(id)
+                if (output)
+                  output.textContent = `${Math.floor(fraction * 100)}%`
+              }}
               items={items}
               selected={selected}
               draft={draft}
@@ -540,6 +570,23 @@ export default function App() {
                 <span key={room} data-testid={`cleaning-${room}`}>
                   <b>{roomNames[room]}</b> · Убрано {progress.disposed} /{' '}
                   {progress.total}
+                  {' · Пол '}
+                  <span
+                    data-testid={`floor-${room}`}
+                    ref={(node) => {
+                      const id = dirtPatches.find((d) => d.room === room)!.id
+                      if (node) floorOutputs.current.set(id, node)
+                      else floorOutputs.current.delete(id)
+                    }}
+                  >
+                    {Math.floor(
+                      cleanFraction(
+                        history.dirt.find((d) => d.id === `floor-${room}`)!
+                          .mask,
+                      ) * 100,
+                    )}
+                    %
+                  </span>
                 </span>
               )
             })}
@@ -589,22 +636,25 @@ export default function App() {
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                Shift + ЛКМ по мусору — быстрая уборка в любом режиме. Уборка:
-                включите «Взаимодействие», нажмите на мусор, затем на ведро. Esc
-                отменяет подбор; Ctrl+Z возвращает выброшенный мусор. E —
-                действие выбранного предмета: ящик, торшер или взять вещь. Tab —
-                переключить режим для кликов мышью. Enter — установить; Esc —
-                отменить. Shift+WASD — ускорение камеры; Home — исходный вид.
-                Книгу, чашку и коробку можно взять и поставить на пол, ковёр,
-                стол, тумбу, комод, матрас или сиденье либо в открытый ящик. Для
-                удобства есть кнопки «В ящик»; содержимое закрытого ящика можно
-                достать после его открытия. Ctrl+Z — отмена; Ctrl+Y /
-                Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
-                линиями движение свободное. Зелёный контур — можно поставить,
-                красный — нельзя. Между мебелью — зазор 2 см. Для ковра под
-                мебелью: выберите его в списке, нажмите «Переместить», наведите
-                на пол и щёлкните. R поворачивает и предпросмотр; Esc отменяет.
-                На сенсорном экране: перенос одним пальцем, камера — двумя.
+                Пол: в режиме «Взаимодействие» удерживайте ЛКМ и протирайте
+                грязь мышью. Esc отменяет текущий жест; Ctrl+Z возвращает
+                стёртую грязь. Shift + ЛКМ по мусору — быстрая уборка в любом
+                режиме. Уборка: включите «Взаимодействие», нажмите на мусор,
+                затем на ведро. Esc отменяет подбор; Ctrl+Z возвращает
+                выброшенный мусор. E — действие выбранного предмета: ящик,
+                торшер или взять вещь. Tab — переключить режим для кликов мышью.
+                Enter — установить; Esc — отменить. Shift+WASD — ускорение
+                камеры; Home — исходный вид. Книгу, чашку и коробку можно взять
+                и поставить на пол, ковёр, стол, тумбу, комод, матрас или
+                сиденье либо в открытый ящик. Для удобства есть кнопки «В ящик»;
+                содержимое закрытого ящика можно достать после его открытия.
+                Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор. Мягкая привязка
+                к сетке 0,25 м: между линиями движение свободное. Зелёный контур
+                — можно поставить, красный — нельзя. Между мебелью — зазор 2 см.
+                Для ковра под мебелью: выберите его в списке, нажмите
+                «Переместить», наведите на пол и щёлкните. R поворачивает и
+                предпросмотр; Esc отменяет. На сенсорном экране: перенос одним
+                пальцем, камера — двумя.
               </small>
             </div>
           )}

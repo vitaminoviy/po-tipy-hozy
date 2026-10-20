@@ -12,6 +12,8 @@ import House from './House'
 import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
 import Cleaning from './TrashScene'
+import DirtScene from './DirtScene'
+import type { DirtState } from './wiping'
 import type { Trash, Disposal } from './cleaning'
 import {
   placementCandidate,
@@ -81,6 +83,10 @@ function StoredContents({
 }
 
 type Props = {
+  dirt: DirtState[]
+  onWipeBegin: () => void
+  onWipeCommit: (id: string, mask: Uint8Array) => void
+  onWipeProgress: (id: string, fraction: number) => void
   items: Item[]
   selected: string | null
   draft: Item | null
@@ -127,6 +133,7 @@ function Interior(p: Props) {
   const current = useRef(p)
   current.current = p
   const keys = useRef(new Set<string>())
+  const wiping = useRef(false)
   const [quickHeld, setQuickHeld] = useState(false)
   useEffect(() => {
     if (!p.disposal) delete gl.domElement.dataset.flight
@@ -157,7 +164,7 @@ function Interior(p: Props) {
     const fast = keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
     // Only a held left-button drag pauses keyboard camera travel. A selected
     // item or click-to-place preview never takes ownership of WASD.
-    if (drag.current) {
+    if (drag.current || wiping.current) {
       cameraVelocity.current.set(0, 0, 0)
     } else {
       const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
@@ -171,6 +178,7 @@ function Interior(p: Props) {
       orbit.target.add(shift)
     }
     orbit.update()
+    orbit.enabled = !drag.current && !wiping.current
     // Clamp after damping as well: residual mouse pan must not escape bounds.
     const bounded = orbit.target
       .clone()
@@ -531,6 +539,15 @@ function Interior(p: Props) {
         shadow-normalBias={0.04}
       />
       <House walls={p.walls} />
+      <DirtScene
+        dirt={p.dirt}
+        enabled={p.mode === 'interact' && !p.draft && !p.placing && !p.disposal}
+        cancelToken={p.cancelToken}
+        active={wiping}
+        onBegin={p.onWipeBegin}
+        onCommit={p.onWipeCommit}
+        onProgress={p.onWipeProgress}
+      />
       <Cleaning
         trash={p.trash}
         items={p.items}
