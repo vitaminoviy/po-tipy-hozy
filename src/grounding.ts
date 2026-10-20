@@ -17,7 +17,12 @@ function overlaps(
 // Shared contact surface for furniture panels and small floor objects.
 // Moving a rug changes contact height, without attaching floor objects to it.
 export function supportHeight(item: Item, items: Item[]) {
-  const base = collisionBounds(item)
+  return floorSupport(collisionBounds(item), items)
+}
+export function floorSupport(
+  base: { x: number; z: number; w: number; d: number },
+  items: Item[],
+) {
   let height = FLOOR_TOP
   for (const rug of items) {
     if (catalog[rug.kind].category !== 'floorDecor') continue

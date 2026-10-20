@@ -1,4 +1,5 @@
 import { supportHeight } from './grounding'
+import { bins } from './cleaning'
 import {
   softSurfaceZones,
   furnitureVolumes,
@@ -535,6 +536,20 @@ export function validatePlacement(item: Item, items: Item[]): string | null {
     return 'Оставьте свободным проход между комнатами'
   if (!floorDecor && right > 1.7 && left < 3.1 && front > 3.0)
     return 'Оставьте свободным вход в дом'
+  if (
+    !floorDecor &&
+    bins.some(
+      (bin) =>
+        boundsDistance(collisionBounds(item), {
+          ...bin,
+          w: 0.472,
+          d: 0.472,
+          circle: true,
+        }) <
+        (small ? CONTACT_GAP : 0.02) - epsilon,
+    )
+  )
+    return 'Здесь стоит мусорное ведро'
   for (const other of items) {
     if (other.id === item.id) continue
     if (small || isSmall(other)) {

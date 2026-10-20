@@ -5,6 +5,8 @@ import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
 import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
+import Cleaning from './TrashScene'
+import type { Trash, Disposal } from './cleaning'
 import {
   placementCandidate,
   validatePlacement,
@@ -89,9 +91,14 @@ type Props = {
   cancelToken: number
   onInteract: (id: string, action: Interaction) => void
   onTake: (id: string) => void
+  trash: Trash[]
+  disposal: Disposal | null
+  binFeedback: { id: string; at: number } | null
+  onTrashPick: (id: string) => void
+  onBin: (id: string) => void
 }
 function Interior(p: Props) {
-  const { camera, gl, raycaster, size } = useThree()
+  const { camera, gl, raycaster, size, scene } = useThree()
   const fitZoom = Math.min(46, size.width / 14, size.height / 10)
   const renderedFrames = useRef(0)
   // Canvas DOM presence precedes the first scene render / world matrices.
@@ -378,6 +385,17 @@ function Interior(p: Props) {
       if (!props.placing || e.button !== 0 || e.buttons !== 1) return
       e.stopImmediatePropagation()
       e.preventDefault()
+      pointAt(e.clientX, e.clientY)
+      if (
+        raycaster
+          .intersectObjects(scene.children, true)
+          .some((hit) => hit.object.userData.cleaningTarget === 'bin')
+      ) {
+        props.onMessage(
+          'Ведро принимает только мусор. Для предмета выберите другое место.',
+        )
+        return
+      }
       const item = props.items.find((i) => i.id === props.selected)
       if (!item) return
       const candidate = candidateAt(props.draft ?? item, e.clientX, e.clientY)
@@ -408,7 +426,7 @@ function Interior(p: Props) {
       window.removeEventListener('keyup', release)
       gl.domElement.removeEventListener('pointerdown', place, true)
     }
-  }, [camera, gl, raycaster, fitZoom])
+  }, [camera, gl, raycaster, fitZoom, scene])
   useEffect(() => {
     cancelGesture.current()
   }, [p.cancelToken])
@@ -472,6 +490,16 @@ function Interior(p: Props) {
         shadow-normalBias={0.04}
       />
       <House walls={p.walls} />
+      <Cleaning
+        trash={p.trash}
+        items={p.items}
+        pending={p.disposal}
+        feedback={p.binFeedback}
+        enabled={p.mode === 'interact' && !p.draft && !p.placing}
+        onPick={p.onTrashPick}
+        onBin={p.onBin}
+        onHint={p.onMessage}
+      />
       {/** Children resolve against the preview parent so attachments move atomically. */}
       {p.items.map((item) => {
         const shownItems = p.draft

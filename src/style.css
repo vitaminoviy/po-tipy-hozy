@@ -635,3 +635,13 @@ footer .invalid i {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+@media (max-width: 700px) {
+  .room-labels {
+    display: flex;
+    right: 18px;
+    bottom: 200px;
+    gap: 8px;
+    font-size: 9px;
+  }
+}
