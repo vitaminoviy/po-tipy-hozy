@@ -1,5 +1,6 @@
 // Local box parts for the three upholstered models. Keep intentional interior
 // intersections, but never overlap outward-facing coplanar faces of two parts.
+import { FLOOR_TOP, panelToSurface } from './grounding'
 export type BoxPart = {
   id: string
   p: [number, number, number]
@@ -9,7 +10,7 @@ export type BoxPart = {
 export const upholsteredParts: Record<'sofa' | 'chair' | 'bed', BoxPart[]> = {
   sofa: [
     // Recess the base by 1–2 cm beneath the back and arms.
-    { id: 'base', p: [0, 0.45, 0], s: [2.46, 0.55, 1.08], c: '#4e6955' },
+    { id: 'base', p: [0, 0.37, 0], s: [2.46, 0.71, 1.08], c: '#4e6955' },
     { id: 'back', p: [0, 0.95, -0.43], s: [2.5, 0.8, 0.24], c: '#6c8468' },
     // Arms end at the front of the back, rather than sharing its rear face.
     ...[-1.1, 1.1].map((x): BoxPart => ({
@@ -27,7 +28,7 @@ export const upholsteredParts: Record<'sofa' | 'chair' | 'bed', BoxPart[]> = {
     { id: 'pillow', p: [-0.7, 1, -0.2], s: [0.42, 0.42, 0.17], c: '#e1d2b3' },
   ],
   chair: [
-    { id: 'base', p: [0, 0.48, 0], s: [0.98, 0.5, 0.98], c: '#b77c56' },
+    { id: 'base', p: [0, 0.3725, 0], s: [0.98, 0.715, 0.98], c: '#b77c56' },
     { id: 'back', p: [0, 0.88, -0.38], s: [1, 0.65, 0.24], c: '#c58d65' },
     { id: 'seat', p: [0, 0.77, 0.06], s: [0.68, 0.15, 0.7], c: '#d2a17b' },
     ...[-0.43, 0.43].map((x): BoxPart => ({
@@ -38,7 +39,7 @@ export const upholsteredParts: Record<'sofa' | 'chair' | 'bed', BoxPart[]> = {
     })),
   ],
   bed: [
-    { id: 'base', p: [0, 0.3, 0], s: [2, 0.4, 2.65], c: '#a87546' },
+    { id: 'base', p: [0, 0.2575, 0], s: [2, 0.485, 2.65], c: '#a87546' },
     {
       id: 'headboard',
       p: [0, 0.94, -1.22],
@@ -56,4 +57,15 @@ export const upholsteredParts: Record<'sofa' | 'chair' | 'bed', BoxPart[]> = {
     })),
     { id: 'fold', p: [0, 0.9, 0.96], s: [1.97, 0.04, 0.42], c: '#849483' },
   ],
+}
+
+export function partsOnSurface(
+  kind: keyof typeof upholsteredParts,
+  height = FLOOR_TOP,
+) {
+  return upholsteredParts[kind].map((part) =>
+    part.id === 'base'
+      ? { ...part, ...panelToSurface(part.p, part.s, height) }
+      : part,
+  )
 }

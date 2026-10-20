@@ -9,7 +9,13 @@ import {
   Color,
 } from 'three'
 import type { Item, WorldItem } from './placement'
-import { upholsteredParts } from './furnitureGeometry'
+import { partsOnSurface } from './furnitureGeometry'
+import {
+  FLOOR_TOP,
+  panelToSurface,
+  rugCenterY,
+  RUG_THICKNESS,
+} from './grounding'
 import { catalog, footprint, drawerSpecs } from './placement'
 import { approach, type Interaction, type Mode } from './history'
 
@@ -147,11 +153,13 @@ function Model({
   interactive,
   onInteract,
   drawerMotion,
+  surfaceY,
 }: {
   item: Item
   interactive: boolean
   onInteract: (action: Interaction) => void
   drawerMotion: Map<string, number>
+  surfaceY: number
 }) {
   const kind = item.kind
   const wood = '#a87546',
@@ -160,7 +168,7 @@ function Model({
     case 'sofa':
     case 'chair':
     case 'bed':
-      return upholsteredParts[kind].map(({ id, ...part }) => (
+      return partsOnSurface(kind, surfaceY).map(({ id, ...part }) => (
         <Box key={id} {...part} />
       ))
     case 'table':
@@ -178,7 +186,11 @@ function Model({
       return (
         <>
           {[-0.71, 0.71].map((x) => (
-            <Box key={x} p={[x, 0.65, 0]} s={[0.08, 1.1, 0.65]} c={wood} />
+            <Box
+              key={x}
+              {...panelToSurface([x, 0.65, 0], [0.08, 1.1, 0.65], surfaceY)}
+              c={wood}
+            />
           ))}
           <Box p={[0, 0.65, -0.3]} s={[1.34, 1.1, 0.05]} c="#8b6546" />
           {[0.12, 0.47, 0.82].map((y) => (
@@ -229,10 +241,20 @@ function Model({
       return (
         <>
           {[-0.325, 0.325].map((x) => (
-            <Box key={x} p={[x, 0.4, 0]} s={[0.05, 0.7, 0.6]} c={wood} />
+            <Box
+              key={x}
+              {...panelToSurface([x, 0.4, 0], [0.05, 0.7, 0.6], surfaceY)}
+              c={wood}
+            />
           ))}
-          <Box p={[0, 0.4, -0.275]} s={[0.6, 0.7, 0.05]} c={wood} />
-          <Box p={[0, 0.2, 0]} s={[0.6, 0.3, 0.6]} c={wood} />
+          <Box
+            {...panelToSurface([0, 0.4, -0.275], [0.6, 0.7, 0.05], surfaceY)}
+            c={wood}
+          />
+          <Box
+            {...panelToSurface([0, 0.2, 0], [0.6, 0.3, 0.6], surfaceY)}
+            c={wood}
+          />
           <Box p={[0, 0.78, 0]} s={[0.76, 0.08, 0.7]} c="#caa47b" />
           <Drawer
             {...drawerSpecs(item)[0]}
@@ -281,12 +303,12 @@ function Model({
     case 'rug':
     case 'bedroomRug': {
       const [w, d] = catalog[kind].size
-      const y = kind === 'rug' ? 0.027 : 0.03
+      const y = rugCenterY(kind)
       return (
         <>
           <Box
             p={[0, y, 0]}
-            s={[w, 0.018, d]}
+            s={[w, RUG_THICKNESS, d]}
             c={catalog[kind].color}
             castShadow={false}
           />
@@ -390,6 +412,7 @@ export default function Furniture({
   mode,
   onInteract,
   drawerMotion,
+  surfaceY = FLOOR_TOP,
 }: {
   item: WorldItem
   selected: boolean
@@ -398,6 +421,7 @@ export default function Furniture({
   mode: Mode
   onInteract: (action: Interaction) => void
   drawerMotion: Map<string, number>
+  surfaceY?: number
 }) {
   return (
     <>
@@ -420,6 +444,7 @@ export default function Furniture({
             interactive={mode === 'interact'}
             onInteract={onInteract}
             drawerMotion={drawerMotion}
+            surfaceY={surfaceY}
           />
         </group>
       </group>

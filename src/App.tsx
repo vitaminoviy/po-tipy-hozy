@@ -206,7 +206,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.3.3
+          <i /> ПРОТОТИП 0.3.4
         </span>
       </header>
       <div className="workspace">

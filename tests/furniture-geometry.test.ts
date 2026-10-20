@@ -1,7 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { BoxGeometry, Vector3 } from 'three'
-import { upholsteredParts, type BoxPart } from '../src/furnitureGeometry'
+import {
+  upholsteredParts,
+  partsOnSurface,
+  type BoxPart,
+} from '../src/furnitureGeometry'
 import { catalog } from '../src/placement'
 
 // Only equal outward normals compete for visible depth. Opposite-facing
@@ -49,11 +53,13 @@ function coplanarOverlaps(parts: BoxPart[]) {
 test('coplanar regression detector reproduces all three original defects', () => {
   const original = structuredClone(upholsteredParts)
   original.sofa.find((p) => p.id === 'base')!.s = [2.5, 0.55, 1.1]
+  original.sofa.find((p) => p.id === 'base')!.p[1] = 0.45
   for (const p of original.sofa.filter((p) => p.id.startsWith('arm'))) {
     p.p[2] = 0
     p.s[2] = 1.1
   }
   original.chair.find((p) => p.id === 'base')!.s = [1, 0.5, 1]
+  original.chair.find((p) => p.id === 'base')!.p[1] = 0.48
   for (const p of original.chair.filter((p) => p.id.startsWith('arm'))) {
     p.p[2] = 0
     p.s[2] = 1
@@ -68,6 +74,8 @@ for (const kind of ['sofa', 'chair', 'bed'] as const) {
   test(`${kind}: no competing coplanar faces, valid outward normals and no duplicate triangles`, () => {
     const parts = upholsteredParts[kind]
     assert.deepEqual(coplanarOverlaps(parts), [])
+    for (const height of [0.015, 0.036, 0.039, 0.042, 0.045])
+      assert.deepEqual(coplanarOverlaps(partsOnSurface(kind, height)), [])
     assert.equal(new Set(parts.map((p) => p.id)).size, parts.length)
     for (const part of parts) {
       assert.ok(part.s.every((n) => Number.isFinite(n) && n > 0))

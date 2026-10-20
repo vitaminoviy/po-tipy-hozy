@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
+import { supportHeight } from './grounding'
 import Furniture from './Furniture'
 import {
   placementCandidate,
@@ -526,6 +527,7 @@ function Interior(p: Props) {
               onDown={down}
               mode={p.mode}
               drawerMotion={drawerMotion.current}
+              surfaceY={supportHeight(shown, shownItems)}
               onInteract={(action) => {
                 p.onSelect(item.id)
                 p.onInteract(item.id, action)
