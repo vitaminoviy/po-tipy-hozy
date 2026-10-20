@@ -15,7 +15,7 @@ import {
   DRAWER_TRAVEL,
 } from '../src/history'
 
-test('surface decor requires an eligible surface and stays within its bounds', () => {
+test('small decor supports the floor or an eligible surface and stays within its bounds', () => {
   const book = initialItems.find((i) => i.kind === 'book')!
   for (const id of ['table', 'cabinet', 'nightstand']) {
     assert.equal(
@@ -30,9 +30,12 @@ test('surface decor requires an eligible surface and stays within its bounds', (
       /край/,
     )
   }
-  assert.match(
-    validatePlacement({ ...book, surfaceId: undefined }, initialItems)!,
-    /поверхность/,
+  assert.equal(
+    validatePlacement(
+      { ...book, surfaceId: undefined, x: -1.5, z: 0 },
+      initialItems,
+    ),
+    null,
   )
   assert.match(
     validatePlacement({ ...book, surfaceId: 'bed' }, initialItems)!,

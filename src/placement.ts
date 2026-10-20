@@ -1,3 +1,5 @@
+import { supportHeight } from './grounding'
+
 export type Kind =
   | 'sofa'
   | 'table'
@@ -234,7 +236,11 @@ export function support(item: Item, parent: Item) {
 export function worldPose(item: Item, items: Item[]): WorldItem {
   const parent = items.find((i) => i.id === item.surfaceId),
     surface = parent && support(item, parent)
-  if (!surface || !parent) return { ...item, y: isSmall(item) ? 0.035 : 0 }
+  if (!surface || !parent)
+    return {
+      ...item,
+      y: isSmall(item) ? supportHeight(item, items) + 0.001 : 0,
+    }
   const angle = (parent.rotation * Math.PI) / 2,
     c = Math.cos(angle),
     s = Math.sin(angle)
@@ -268,11 +274,11 @@ export function validateSurfacePlacement(
   if (!surface.open) return 'Сначала откройте ящик'
   if (catalog[item.kind].height + 0.006 > surface.clearance)
     return 'Предмет слишком высокий для ящика'
-  const [w, d] = footprint(item),
-    margin = 0.025
+  const bounds = collisionBounds(item),
+    margin = item.drawerIndex === undefined ? 0.01 : 0.025
   if (
-    Math.abs(item.x) + w / 2 > surface.size[0] / 2 - margin + 1e-6 ||
-    Math.abs(item.z) + d / 2 > surface.size[1] / 2 - margin + 1e-6
+    Math.abs(bounds.x) + bounds.w / 2 > surface.size[0] / 2 - margin + 1e-6 ||
+    Math.abs(bounds.z) + bounds.d / 2 > surface.size[1] / 2 - margin + 1e-6
   )
     return 'Предмет выходит за край поверхности'
   for (const other of items) {
@@ -281,7 +287,8 @@ export function validateSurfacePlacement(
       isSmall(other) &&
       other.surfaceId === item.surfaceId &&
       other.drawerIndex === item.drawerIndex &&
-      clearanceBetween(item, other) < 0.035 - 1e-6
+      clearanceBetween(item, other) <
+        (item.drawerIndex === undefined ? SMALL_GAP : 0.035) - 1e-6
     )
       return 'На поверхности уже есть другой предмет'
   }
@@ -290,6 +297,71 @@ export function validateSurfacePlacement(
 export function footprint(item: Item): [number, number] {
   const [w, d] = catalog[item.kind].size
   return item.rotation % 2 ? [d, w] : [w, d]
+}
+export const SMALL_GAP = 0.012
+type Bounds = { x: number; z: number; w: number; d: number; circle: boolean }
+
+function localBounds(
+  item: Item,
+  w: number,
+  d: number,
+  x = 0,
+  z = 0,
+  circle = false,
+): Bounds {
+  const angle = (item.rotation * Math.PI) / 2
+  return {
+    x: item.x + Math.cos(angle) * x + Math.sin(angle) * z,
+    z: item.z - Math.sin(angle) * x + Math.cos(angle) * z,
+    w: item.rotation % 2 ? d : w,
+    d: item.rotation % 2 ? w : d,
+    circle,
+  }
+}
+
+// Cup cylinder: radius .09; handle: centre X=.085, outer radius .038.
+// Preserve its asymmetric extent instead of inflating both sides of the origin.
+export function collisionBounds(item: Item): Bounds {
+  if (item.kind === 'cup') return localBounds(item, 0.213, 0.18, 0.0165)
+  const [w, d] = catalog[item.kind].size
+  return localBounds(item, w, d, 0, 0, catalog[item.kind].shape === 'circle')
+}
+
+// For the three floor-size objects (height <= .214), elevated upholstery,
+// tabletops, handles and lamp shades must not inflate the floor collision area.
+// These conservative silhouettes enclose all low geometry, including drawer 1.
+function floorCollisionParts(item: Item): Bounds[] {
+  switch (item.kind) {
+    case 'sofa':
+      return [localBounds(item, 2.46, 1.08)]
+    case 'chair':
+      return [localBounds(item, 0.98, 0.98)]
+    case 'bed':
+      return [localBounds(item, 2, 2.65)]
+    case 'cabinet': {
+      const travel = item.drawers?.[0] ? DRAWER_TRAVEL : 0
+      return [localBounds(item, 1.5, 0.685 + travel, 0, 0.0175 + travel / 2)]
+    }
+    case 'nightstand':
+      return [localBounds(item, 0.7, 0.6)]
+    case 'table':
+      return [-0.5, 0.5].flatMap((x) =>
+        [-0.28, 0.28].map((z) => localBounds(item, 0.09, 0.09, x, z)),
+      )
+    case 'plant':
+      return [localBounds(item, 0.54, 0.54, 0, 0, true)]
+    case 'lamp':
+      return [localBounds(item, 0.6, 0.6, 0, 0, true)]
+    default:
+      return [collisionBounds(item)]
+  }
+}
+
+export function floorClearance(small: Item, other: Item): number {
+  const bounds = collisionBounds(small)
+  return Math.min(
+    ...floorCollisionParts(other).map((part) => boundsDistance(bounds, part)),
+  )
 }
 export const GRID_STEP = 0.25
 // Flat capture zone with a C1-continuous release into free movement.
@@ -324,18 +396,18 @@ export function minimumGap(a: Item, b: Item): number {
 // Distance between the actual axis-aligned footprints (quarter-turn rotations).
 // Circular decor uses its silhouette instead of an inflated square.
 export function clearanceBetween(a: Item, b: Item): number {
-  const [aw, ad] = footprint(a),
-    [bw, bd] = footprint(b)
-  const ac = catalog[a.kind].shape === 'circle',
-    bc = catalog[b.kind].shape === 'circle'
+  return boundsDistance(collisionBounds(a), collisionBounds(b))
+}
+function boundsDistance(a: Bounds, b: Bounds): number {
+  const { w: aw, d: ad, circle: ac } = a,
+    { w: bw, d: bd, circle: bc } = b
   const dx = Math.abs(a.x - b.x),
     dz = Math.abs(a.z - b.z)
   if (ac && bc) return Math.hypot(dx, dz) - (aw + bw) / 2
   if (ac || bc) {
-    const circle = ac ? a : b,
-      box = ac ? b : a
-    const [w, d] = footprint(box),
-      radius = footprint(circle)[0] / 2
+    const box = ac ? b : a,
+      { w, d } = box,
+      radius = (ac ? aw : bw) / 2
     return Math.hypot(Math.max(0, dx - w / 2), Math.max(0, dz - d / 2)) - radius
   }
   return Math.hypot(
@@ -348,12 +420,16 @@ export function placementCandidate(item: Item, x: number, z: number): Item {
   return { ...item, x: snap(x), z: snap(z) }
 }
 export function validatePlacement(item: Item, items: Item[]): string | null {
-  if (isSmall(item)) return validateSurfacePlacement(item, items)
-  const [w, d] = footprint(item)
-  const left = item.x - w / 2,
-    right = item.x + w / 2,
-    back = item.z - d / 2,
-    front = item.z + d / 2
+  const small = isSmall(item)
+  if (small && item.surfaceId !== undefined)
+    return validateSurfacePlacement(item, items)
+  if (small && item.drawerIndex !== undefined)
+    return 'Сначала выберите открытый ящик'
+  const { x, z, w, d } = collisionBounds(item)
+  const left = x - w / 2,
+    right = x + w / 2,
+    back = z - d / 2,
+    front = z + d / 2
   const epsilon = 1e-6
   if (
     left < -4.88 - epsilon ||
@@ -371,6 +447,18 @@ export function validatePlacement(item: Item, items: Item[]): string | null {
     return 'Оставьте свободным вход в дом'
   for (const other of items) {
     if (other.id === item.id) continue
+    if (small || isSmall(other)) {
+      if (catalog[other.kind].category === 'floorDecor' || floorDecor) continue
+      // Attached decor belongs to another height/layer, not the room floor.
+      if ((small && item.surfaceId) || (isSmall(other) && other.surfaceId))
+        continue
+      const distance = small
+        ? floorClearance(item, other)
+        : floorClearance(other, item)
+      if (distance < SMALL_GAP - epsilon)
+        return 'Здесь уже стоит другой предмет'
+      continue
+    }
     const gap = minimumGap(item, other)
     if (gap === 0) continue
     const distance = clearanceBetween(item, other)

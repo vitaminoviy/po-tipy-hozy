@@ -1,4 +1,4 @@
-import { catalog, footprint, type Item } from './placement'
+import { catalog, footprint, collisionBounds, type Item } from './placement'
 
 export const FLOOR_TOP = 0.015
 export const RUG_THICKNESS = 0.018
@@ -14,11 +14,10 @@ function overlaps(
     Math.abs(a.z - b.z) < (a.d + b.d) / 2 - 1e-6
   )
 }
-// Only the existing support panels change height. Seats, attachments, item
-// origins and placement rules stay fixed when a rug moves beneath furniture.
+// Shared contact surface for furniture panels and small floor objects.
+// Moving a rug changes contact height, without attaching floor objects to it.
 export function supportHeight(item: Item, items: Item[]) {
-  const [w, d] = footprint(item)
-  const base = { x: item.x, z: item.z, w, d }
+  const base = collisionBounds(item)
   let height = FLOOR_TOP
   for (const rug of items) {
     if (catalog[rug.kind].category !== 'floorDecor') continue

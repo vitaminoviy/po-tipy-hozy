@@ -193,7 +193,8 @@ test('small objects attach to surfaces, reject edges and overlap, follow parent 
   await clickWorld(page, -2.17, 0.595, -0.4)
   await expect(page.locator('footer')).toContainText('край поверхности')
   await clickWorld(page, -1, 0, 2)
-  await expect(page.locator('footer')).toContainText('Нужна поверхность')
+  await expect(page.getByTestId('attachment')).toHaveText('На полу')
+  await page.keyboard.press('Control+z')
   await page.keyboard.press('Escape')
   await select(page, 'Книга')
   await expect(page.getByTestId('attachment')).toContainText(

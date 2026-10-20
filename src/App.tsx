@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useReducer } from 'react'
+import { useCallback, useEffect, useState, useReducer, useRef } from 'react'
 import Scene from './Scene'
 import {
   catalog,
@@ -17,6 +17,11 @@ import {
   type Interaction,
 } from './history'
 import { isEditing, primaryInteraction } from './controls'
+import {
+  rememberPlacement,
+  resolveDrop,
+  type PlacementSession,
+} from './placementSession'
 
 declare global {
   interface Window {
@@ -37,7 +42,8 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('move')
   const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [draft, setDraft] = useState<Item | null>(null)
+  const [draft, setDraftState] = useState<Item | null>(null)
+  const placementSession = useRef<PlacementSession | null>(null)
   const [placing, setPlacing] = useState(false)
   const [walls, setWalls] = useState(true)
   const [resetCamera, setResetCamera] = useState(0)
@@ -45,6 +51,23 @@ export default function App() {
     'Выберите предмет в доме или в списке слева',
   )
   const [help, setHelp] = useState(false)
+  const setDraft = useCallback(
+    (next: Item | null) => {
+      if (next) {
+        const previous = placementSession.current
+        const session =
+          previous?.origin.id === next.id
+            ? previous
+            : {
+                origin: items.find((i) => i.id === next.id) ?? next,
+                lastValid: null,
+              }
+        placementSession.current = rememberPlacement(session, next, items)
+      } else placementSession.current = null
+      setDraftState(next)
+    },
+    [items],
+  )
   const item = items.find((i) => i.id === selected)
   const shownItem =
     (draft ?? item) ? worldPose((draft ?? item)!, items) : undefined
@@ -52,11 +75,27 @@ export default function App() {
     (next: Item) => dispatch({ type: 'change', item: next }),
     [],
   )
+  const drop = useCallback(
+    (candidate: Item) => {
+      const session = placementSession.current
+      if (!session) return
+      const next = resolveDrop(session, candidate, items)
+      if (next) {
+        commit(next)
+        setMessage(
+          validatePlacement(candidate, items)
+            ? 'Предмет возвращён в последнюю допустимую позицию'
+            : 'Предмет размещён',
+        )
+      } else setMessage('Размещение отменено: допустимая позиция недоступна')
+    },
+    [items, commit],
+  )
   const cancelTransfer = useCallback(() => {
     setDraft(null)
     setPlacing(false)
     setCancelToken((n) => n + 1)
-  }, [])
+  }, [setDraft])
   const switchMode = useCallback(() => {
     cancelTransfer()
     setMode((old) => (old === 'move' ? 'interact' : 'move'))
@@ -77,11 +116,11 @@ export default function App() {
       setDraft(target)
       setMessage(
         isSmall(target)
-          ? 'Наведите на поверхность или открытый ящик; WASD — уточнить, Enter — поставить'
+          ? 'Наведите на пол, поверхность или открытый ящик; WASD — уточнить, Enter — поставить'
           : 'Мышь или WASD — перенос, Shift — точнее, Q/R — поворот, Enter — поставить',
       )
     },
-    [items],
+    [items, setDraft],
   )
   const interact = useCallback(
     (id: string, action: Interaction) => {
@@ -139,7 +178,7 @@ export default function App() {
         setMessage('Предмет повёрнут на 90°')
       }
     },
-    [item, items, draft, commit, mode],
+    [item, items, draft, commit, mode, setDraft],
   )
   useEffect(() => {
     const webapp = window.Telegram?.WebApp
@@ -192,7 +231,7 @@ export default function App() {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [rotate, switchMode, travel, draft, item, interact])
+  }, [rotate, switchMode, travel, draft, item, interact, setDraft])
   return (
     <div className="app">
       <header>
@@ -206,7 +245,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.3.4
+          <i /> ПРОТОТИП 0.3.5
         </span>
       </header>
       <div className="workspace">
@@ -333,6 +372,7 @@ export default function App() {
               onSelect={setSelected}
               onDraft={setDraft}
               onCommit={commit}
+              onDrop={drop}
               onMessage={setMessage}
               onPlacementEnd={() => setPlacing(false)}
               mode={mode}
@@ -399,15 +439,15 @@ export default function App() {
                 Tab — переключить режим для кликов мышью. Enter — установить;
                 Esc — отменить. Shift+WASD без переноса — ускорение камеры; Home
                 — исходный вид. Книгу, чашку и коробку можно взять и поставить
-                на стол, тумбу или комод или в открытый ящик. Для удобства есть
-                кнопки «В ящик»; содержимое закрытого ящика можно достать после
-                его открытия. Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор.
-                Мягкая привязка к сетке 0,25 м: между линиями движение
-                свободное. Зелёный контур — можно поставить, красный — нельзя.
-                Между мебелью — отступ 22 см. Для ковра под мебелью: выберите
-                его в списке, нажмите «Переместить», наведите на пол и щёлкните.
-                R поворачивает и предпросмотр; Esc отменяет. На сенсорном
-                экране: перенос одним пальцем, камера — двумя.
+                на пол, ковёр, стол, тумбу или комод или в открытый ящик. Для
+                удобства есть кнопки «В ящик»; содержимое закрытого ящика можно
+                достать после его открытия. Ctrl+Z — отмена; Ctrl+Y /
+                Ctrl+Shift+Z — повтор. Мягкая привязка к сетке 0,25 м: между
+                линиями движение свободное. Зелёный контур — можно поставить,
+                красный — нельзя. Между мебелью — отступ 22 см. Для ковра под
+                мебелью: выберите его в списке, нажмите «Переместить», наведите
+                на пол и щёлкните. R поворачивает и предпросмотр; Esc отменяет.
+                На сенсорном экране: перенос одним пальцем, камера — двумя.
               </small>
             </div>
           )}
@@ -439,7 +479,7 @@ export default function App() {
                       catalog[
                         items.find((i) => i.id === shownItem.surfaceId)!.kind
                       ].name
-                    : 'Выберите поверхность'}
+                    : 'На полу'}
                 </span>
               )}
             </div>

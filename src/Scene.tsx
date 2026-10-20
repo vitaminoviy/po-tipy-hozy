@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
-import { supportHeight } from './grounding'
+import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
 import {
   placementCandidate,
@@ -83,6 +83,7 @@ type Props = {
   onSelect: (id: string | null) => void
   onDraft: (item: Item | null) => void
   onCommit: (item: Item) => void
+  onDrop: (item: Item) => void
   onMessage: (s: string) => void
   onPlacementEnd: () => void
   mode: Mode
@@ -201,7 +202,7 @@ function Interior(p: Props) {
     offset = new Vector3(),
   ): Item | null => {
     const props = current.current
-    const floor = pointAt(x, y)
+    const floor = pointAt(x, y, isSmall(item) ? FLOOR_TOP : 0)
     if (!isSmall(item))
       return floor
         ? placementCandidate(item, floor.x - offset.x, floor.z - offset.z)
@@ -252,14 +253,16 @@ function Interior(p: Props) {
     return (
       nearest?.item ??
       (floor
-        ? {
-            ...item,
-            x: floor.x - offset.x,
-            z: floor.z - offset.z,
-            surfaceId: undefined,
-            drawerIndex: undefined,
-            rotation: orientation,
-          }
+        ? placementCandidate(
+            {
+              ...item,
+              surfaceId: undefined,
+              drawerIndex: undefined,
+              rotation: orientation,
+            },
+            floor.x - offset.x,
+            floor.z - offset.z,
+          )
         : null)
     )
   }
@@ -352,13 +355,7 @@ function Interior(p: Props) {
         ...active.draft,
         rotation: current.current.draft?.rotation ?? active.draft.rotation,
       }
-      const error = validatePlacement(candidate, current.current.items)
-      if (error)
-        current.current.onMessage(error + ' — предмет возвращён на место')
-      else {
-        current.current.onCommit(candidate)
-        if (active.moved) current.current.onMessage('Предмет размещён')
-      }
+      if (active.moved) current.current.onDrop(candidate)
       cancel()
     }
     const key = (e: KeyboardEvent) => {
