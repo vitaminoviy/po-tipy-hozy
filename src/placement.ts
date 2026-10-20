@@ -478,7 +478,9 @@ export function minimumGap(a: Item, b: Item): number {
     cb === 'surfaceDecor'
   )
     return 0
-  if (ca === 'furniture' && cb === 'furniture') return 0.22
+  // Full visible footprints already include arms/backs. Keep a contact margin,
+  // rather than the old 22 cm composition reserve invisible in the preview.
+  if (ca === 'furniture' && cb === 'furniture') return 0.02
   return ca === 'decor' && cb === 'decor' ? 0.06 : 0.08
 }
 // Distance between the actual axis-aligned footprints (quarter-turn rotations).

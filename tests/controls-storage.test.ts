@@ -2,8 +2,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   movement,
-  keyboardPlacement,
-  inputOwner,
   smoothAxis,
   CAMERA_SPEED,
   primaryInteraction,
@@ -54,11 +52,6 @@ test('WASD follows camera yaw, diagonals normalize and opposing keys cancel', ()
   })
   assert.equal(Math.hypot(zero.x, zero.z), 0)
 })
-test('keyboard ownership switches only for an active placement', () => {
-  assert.equal(inputOwner(null), 'camera')
-  assert.equal(inputOwner(initialItems[0]), 'furniture')
-  assert.equal(inputOwner(null), 'camera')
-})
 test('camera acceleration and braking integrate equally at 30, 60 and 144 FPS', () => {
   const simulate = (fps: number) => {
     let velocity = 0,
@@ -91,36 +84,6 @@ test('E selects existing actions without camera movement or a new mechanic', () 
     { kind: 'drawer', index: 1 },
   )
   assert.deepEqual(primaryInteraction(stand), { kind: 'drawer', index: 0 })
-})
-test('held WASD escapes snap capture, remains frame-rate independent and precision reduces distance', () => {
-  const item = { ...initialItems.find((i) => i.id === 'plant')!, x: -3, z: 0 }
-  const advance = (fps: number, speed: number) => {
-    let raw = item,
-      preview = item
-    for (let frame = 0; frame < fps; frame++)
-      ({ raw, preview } = keyboardPlacement(raw, speed / fps, 0, [item]))
-    return preview.x
-  }
-  assert.ok(Math.abs(advance(30, 0.4) - advance(144, 0.4)) < 1e-8)
-  assert.ok(advance(60, 0.4) > -2.7)
-  assert.ok(advance(60, 0.18) < advance(60, 0.4))
-})
-test('swept keyboard motion stops at walls and furniture without tunneling or accumulating invalid steps', () => {
-  const plant = { ...initialItems.find((i) => i.id === 'plant')!, x: -3, z: 0 }
-  let result = keyboardPlacement(plant, 50, 0, [plant])
-  assert.ok(result.raw.x < -0.5)
-  assert.ok(validatePlacement(result.preview, [plant]))
-  const blocked = result.raw.x
-  for (let i = 0; i < 60; i++)
-    result = keyboardPlacement(result.raw, 0.03, 0, [plant])
-  assert.equal(result.raw.x, blocked)
-  const other = { ...plant, id: 'obstacle', x: -1.5 }
-  result = keyboardPlacement(plant, 5, 0, [plant, other])
-  assert.ok(result.raw.x < -2.3)
-  assert.equal(
-    validatePlacement({ ...result.raw, x: -3 }, [plant, other]),
-    null,
-  )
 })
 test('nightstand has one real drawer; book and cup fit, box is rejected by height', () => {
   assert.equal(drawerSpecs(stand).length, 1)
@@ -171,15 +134,13 @@ test('stored contents follow drawer translation and all host rotations in local 
     assert.equal(open.y, 0.216)
   }
 })
-test('one completed keyboard session creates one command; new stand drawer actions support history', () => {
+test('one completed mouse placement creates one command; new stand drawer actions support history', () => {
   let history = createHistory([stand])
-  let raw = stand
-  for (let i = 0; i < 60; i++)
-    raw = keyboardPlacement(raw, 0, 0.005, [stand]).raw as typeof stand
+  const preview = { ...stand, z: stand.z + 0.3 }
   assert.equal(history.past.length, 0)
   history = historyReducer(history, {
     type: 'change',
-    item: { ...raw, rotation: 1 },
+    item: { ...preview, rotation: 1 },
   })
   assert.equal(history.past.length, 1)
   assert.deepEqual(history.present[0].drawers, [false, false, false])

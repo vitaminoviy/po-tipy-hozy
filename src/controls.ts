@@ -1,10 +1,4 @@
-import {
-  placementCandidate,
-  validatePlacement,
-  drawerSpecs,
-  isSmall,
-  type Item,
-} from './placement'
+import { drawerSpecs, isSmall, type Item } from './placement'
 import type { Interaction } from './history'
 
 export const CAMERA_SPEED = 5.5
@@ -29,9 +23,6 @@ export function isEditing(target: EventTarget | null) {
       !!target.closest('input, textarea, select, [contenteditable="true"]'))
   )
 }
-export function inputOwner(draft: Item | null) {
-  return draft ? 'furniture' : 'camera'
-}
 // Exact integral of exponential acceleration, rather than velocity * dt after
 // smoothing. Equal held-key time covers equal distance at different FPS.
 export function smoothAxis(value: number, target: number, dt: number) {
@@ -53,29 +44,4 @@ export function movement(
     x: (-forward.z * horizontal + forward.x * vertical) / length,
     z: (forward.x * horizontal + forward.z * vertical) / length,
   }
-}
-// Sweep short steps, retain a raw accumulator independently of the soft snap.
-// An invalid preview never becomes the origin of the next movement step.
-export function keyboardPlacement(
-  item: Item,
-  dx: number,
-  dz: number,
-  items: Item[],
-) {
-  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.025))
-  let raw = item,
-    preview = item
-  let hasValidOrigin = !validatePlacement(
-    placementCandidate(raw, raw.x, raw.z),
-    items,
-  )
-  for (let i = 0; i < steps; i++) {
-    const next = { ...raw, x: raw.x + dx / steps, z: raw.z + dz / steps }
-    preview = placementCandidate(next, next.x, next.z)
-    const error = validatePlacement(preview, items)
-    if (error && hasValidOrigin) break
-    raw = next
-    if (!error) hasValidOrigin = true
-  }
-  return { raw, preview }
 }

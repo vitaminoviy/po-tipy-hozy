@@ -275,61 +275,133 @@ test('E interacts in both modes, Q/R are placement-only and typing suppresses ac
   ).toBeLessThan(0.001)
 })
 
-test('keyboard placement owns WASD, precision and Q/R; enter records once, escape cancels, history restores', async ({
+for (const [name, action] of [
+  ['Журнальный стол', 'Переместить'],
+  ['Чашка', 'Взять предмет'],
+]) {
+  test(
+    'WASD and Shift+WASD only move the camera with selected or previewed ' +
+      name,
+    async ({ page }) => {
+      await open(page)
+      await select(page, name)
+      const initial = await pose(page).textContent()
+      for (const preview of [false, true]) {
+        if (preview) await select(page, action)
+        for (const key of ['w', 'a', 's', 'd']) {
+          const before = await camera(page)
+          await hold(page, key, 160)
+          await page.keyboard.down('Shift')
+          await hold(page, key, 160)
+          await page.keyboard.up('Shift')
+          expect(
+            distance((await camera(page)).target, before.target),
+          ).toBeGreaterThan(0.2)
+          await expect(pose(page)).toHaveText(initial!)
+          await page.keyboard.press('Home')
+          await waitForCameraStill(page)
+        }
+      }
+      await expect(
+        page.getByRole('button', { name: 'Отменить действие', exact: true }),
+      ).toBeDisabled()
+      await page.keyboard.press('q')
+      await expect(pose(page)).toContainText('270°')
+      await page.keyboard.press('r')
+      await expect(pose(page)).toHaveText(initial!)
+      await page.keyboard.press('r')
+      const rotated = await pose(page).textContent()
+      await page.keyboard.press('Enter')
+      await page.keyboard.press('Control+z')
+      await expect(pose(page)).toHaveText(initial!)
+      await expect(
+        page.getByRole('button', { name: 'Отменить действие', exact: true }),
+      ).toBeDisabled()
+      await page.keyboard.press('Control+y')
+      await expect(pose(page)).toHaveText(rotated!)
+      await select(page, action)
+      await page.keyboard.press('q')
+      await page.keyboard.press('Escape')
+      await select(page, name)
+      await expect(pose(page)).toHaveText(rotated!)
+      await select(page, action)
+      await page.keyboard.press('Tab')
+      await expect(
+        page.getByRole('button', { name: /^Взаимодействие/ }),
+      ).toHaveAttribute('aria-pressed', 'true')
+      await expect(pose(page)).toHaveText(rotated!)
+    },
+  )
+}
+
+test('held mouse drag pauses camera WASD without moving furniture; release resumes camera and commits once', async ({
   page,
 }) => {
   await open(page)
-  await select(page, 'Дубовый комод')
-  const initial = await pose(page).textContent(),
-    cameraBefore = await camera(page)
-  await select(page, 'Переместить')
-  await hold(page, 'w')
-  const normal = await pose(page).textContent()
-  expect(normal).not.toBe(initial)
-  await page.keyboard.down('Shift')
-  await hold(page, 'w')
-  await page.keyboard.up('Shift')
-  await page.keyboard.press('q')
-  await expect(pose(page)).toContainText('270°')
+  await select(page, 'Журнальный стол')
+  const initial = await pose(page).textContent()
+  const start = await point(page, -2.8, 0.59, -0.4)
+  const end = await point(page, -1.5, 0.59, 0)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(end.x, end.y, { steps: 12 })
+  const preview = await pose(page).textContent(),
+    before = await camera(page)
+  expect(preview).not.toBe(initial)
+  for (const key of ['w', 'a', 's', 'd']) {
+    await page.keyboard.down('Shift')
+    await hold(page, key, 160)
+    await page.keyboard.up('Shift')
+    await expect(pose(page)).toHaveText(preview!)
+    expect(distance((await camera(page)).target, before.target)).toBeLessThan(
+      0.001,
+    )
+  }
   await page.keyboard.press('r')
-  await expect(pose(page)).toContainText('0°')
-  const placed = await pose(page).textContent()
-  expect(
-    distance((await camera(page)).target, cameraBefore.target),
-  ).toBeLessThan(0.001)
-  await page.keyboard.press('Enter')
-  await expect(
-    page.getByRole('button', { name: 'Переместить', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'false')
+  await expect(pose(page)).toContainText('90°')
+  await page.keyboard.press('q')
+  await page.keyboard.down('d')
+  await page.mouse.up()
+  await page.waitForTimeout(250)
+  await page.keyboard.up('d')
+  expect(distance((await camera(page)).target, before.target)).toBeGreaterThan(
+    0.2,
+  )
+  await expect(pose(page)).toHaveText(preview!)
   await page.keyboard.press('Control+z')
   await expect(pose(page)).toHaveText(initial!)
   await expect(
     page.getByRole('button', { name: 'Отменить действие', exact: true }),
   ).toBeDisabled()
   await page.keyboard.press('Control+y')
-  await expect(pose(page)).toHaveText(placed!)
+  await expect(pose(page)).toHaveText(preview!)
+})
+
+test('large furniture fits close to sofa and chair, but contact reserve and actual overlaps stay red', async ({
+  page,
+}) => {
+  await open(page)
+  await select(page, 'Журнальный стол')
   await select(page, 'Переместить')
-  await hold(page, 's')
+  for (const [host, x, near, margin, overlap] of [
+    ['sofa', -2.8, -1.45, -1.46, -1.5],
+    ['chair', -4, 0.65, 0.665, 0.69],
+  ] as const) {
+    for (const [position, invalid] of [
+      [near, false],
+      [margin, true],
+      [overlap, true],
+    ] as const) {
+      const p = await point(page, x, 0, position)
+      await page.mouse.move(p.x, p.y)
+      if (invalid) await expect(page.locator('footer .invalid')).toBeVisible()
+      else await expect(page.locator('footer .invalid')).toHaveCount(0)
+      await page.screenshot({
+        path: 'artifacts/037-' + host + '-' + position + '.png',
+      })
+    }
+  }
   await page.keyboard.press('Escape')
-  await select(page, 'Дубовый комод')
-  await expect(pose(page)).toHaveText(placed!)
-  await hold(page, 'd')
-  expect(
-    distance((await camera(page)).target, cameraBefore.target),
-  ).toBeGreaterThan(0.2)
-  await page.keyboard.press('Home')
-  // Switching modes cancels a pending move and routes keys back to the camera.
-  await select(page, 'Переместить')
-  await hold(page, 'w')
-  await page.keyboard.press('Tab')
-  await expect(pose(page)).toHaveText(placed!)
-  await expect(
-    page.getByRole('button', { name: /^Взаимодействие/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await hold(page, 'a')
-  expect(
-    distance((await camera(page)).target, cameraBefore.target),
-  ).toBeGreaterThan(0.2)
 })
 
 test('nightstand drawer stores book, closes with contents, follows host move, supports extraction and history', async ({
@@ -438,10 +510,9 @@ test('mouse drop into an open large drawer, overlap rejection, cup/box storage a
   await expect(page.locator('footer .invalid')).toContainText('другой предмет')
   await page.keyboard.press('Enter')
   await expect(page.getByRole('button', { name: /^Установить/ })).toBeVisible()
-  // Move away from the occupied centre using camera-relative precision movement.
-  await page.keyboard.down('Shift')
-  await hold(page, 'd', 2000)
-  await page.keyboard.up('Shift')
+  // Mouse preview near the drawer edge remains invalid; WASD never moves contents.
+  const edge = await point(page, 4.6, 0.21, 2.99)
+  await page.mouse.move(edge.x, edge.y)
   await page.keyboard.press('Enter')
   await expect(page.locator('footer .invalid')).toBeVisible()
   await expect(page.getByRole('button', { name: /^Установить/ })).toBeVisible()

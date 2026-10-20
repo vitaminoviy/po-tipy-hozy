@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { upholsteredParts } from '../src/furnitureGeometry'
 import {
   footprint,
   initialItems,
@@ -47,16 +48,57 @@ test('usable room space extends to the wall and beside the narrower passage', ()
   assert.equal(validatePlacement({ ...table, x: -1.25, z: 1.5 }, []), null)
   assert.match(validatePlacement({ ...table, x: -0.9, z: 1.5 }, [])!, /проход/)
 })
-test('furniture needs 22 cm but decor uses a smaller gap', () => {
+test('furniture allows close placement with a 2 cm contact margin; decor is unchanged', () => {
   const a = { ...table, x: -3 },
-    b: Item = { id: 'cabinet', kind: 'cabinet', x: -3, z: 1, rotation: 0 }
-  assert.equal(minimumGap(a, b), 0.22)
-  assert.match(validatePlacement(b, [a])!, /отступ 22 см/)
-  assert.equal(validatePlacement({ ...b, z: 1.04 }, [a]), null)
+    b: Item = { id: 'cabinet', kind: 'cabinet', x: -3, z: 0.825, rotation: 0 }
+  assert.equal(minimumGap(a, b), 0.02)
+  assert.match(validatePlacement(b, [a])!, /отступ 2 см/)
+  assert.equal(validatePlacement({ ...b, z: 0.845 }, [a]), null)
+  assert.match(validatePlacement({ ...b, z: 0.8 }, [a])!, /другой предмет/)
   const plant: Item = { id: 'plant', kind: 'plant', x: -3, z: 0, rotation: 0 }
   const lamp: Item = { id: 'lamp', kind: 'lamp', x: -2.25, z: 0, rotation: 0 }
   assert.equal(minimumGap(plant, lamp), 0.06)
   assert.match(validatePlacement(lamp, [plant])!, /отступ 6 см/)
+})
+
+test('sofa and chair use full visible bounds and a small margin after every quarter turn', () => {
+  for (const kind of ['sofa', 'chair'] as const) {
+    const parts = upholsteredParts[kind]
+    for (const axis of [0, 2] as const) {
+      const min = Math.min(...parts.map((p) => p.p[axis] - p.s[axis] / 2))
+      const max = Math.max(...parts.map((p) => p.p[axis] + p.s[axis] / 2))
+      assert.ok(
+        Math.abs(min + catalog[kind].size[axis === 0 ? 0 : 1] / 2) < 1e-8,
+      )
+      assert.ok(
+        Math.abs(max - catalog[kind].size[axis === 0 ? 0 : 1] / 2) < 1e-8,
+      )
+    }
+    for (let rotation = 0; rotation < 4; rotation++) {
+      const host: Item = { id: kind, kind, x: -3, z: 0, rotation }
+      for (let turn = 0; turn < 4; turn++) {
+        const candidate = { ...table, x: -3, rotation: turn }
+        const contact = (footprint(host)[1] + footprint(candidate)[1]) / 2
+        for (const sign of [-1, 1]) {
+          const near = { ...candidate, z: sign * (contact + 0.025) }
+          assert.equal(
+            validatePlacement(near, [host]),
+            null,
+            `${kind}:${rotation}/${turn}`,
+          )
+          assert.ok(Math.abs(clearanceBetween(near, host) - 0.025) < 1e-8)
+          assert.match(
+            validatePlacement({ ...near, z: sign * (contact + 0.01) }, [host])!,
+            /отступ 2 см/,
+          )
+          assert.match(
+            validatePlacement({ ...near, z: sign * (contact - 0.01) }, [host])!,
+            /другой предмет/,
+          )
+        }
+      }
+    }
+  }
 })
 test('distance checks preserve diagonal space around rectangles and circular decor', () => {
   const a = { ...table, x: -3 }
@@ -90,7 +132,7 @@ test('rugs overlap furniture in both directions and may cover passage floors', (
   assert.ok(validatePlacement({ ...rug, z: 3 }, []))
 })
 test('collision feedback does not switch the preview between raw and snapped poses', () => {
-  const obstacle = { ...table, x: -3, z: -0.02 }
+  const obstacle = { ...table, x: -3, z: 0.18 }
   const cabinet: Item = {
     id: 'cabinet',
     kind: 'cabinet',

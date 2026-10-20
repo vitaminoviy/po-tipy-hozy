@@ -22,8 +22,6 @@ import { approach } from './history'
 import {
   isEditing,
   movement,
-  keyboardPlacement,
-  inputOwner,
   smoothAxis,
   CAMERA_SPEED,
   CAMERA_FAST_SPEED,
@@ -114,7 +112,6 @@ function Interior(p: Props) {
   const current = useRef(p)
   current.current = p
   const keys = useRef(new Set<string>())
-  const keyboardRaw = useRef<{ raw: Item; preview: Item } | null>(null)
   const cameraVelocity = useRef(new Vector3())
   const drawerMotion = useRef(new Map<string, number>())
   useFrame((_, delta) => {
@@ -138,30 +135,14 @@ function Interior(p: Props) {
     if (isEditing(document.activeElement)) keys.current.clear()
     const forward = camera.getWorldDirection(new Vector3()).setY(0).normalize()
     const direction = movement(keys.current, forward)
-    const precise =
-      keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
-    if (inputOwner(props.draft) === 'furniture') {
+    const fast = keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
+    // Only a held left-button drag pauses keyboard camera travel. A selected
+    // item or click-to-place preview never takes ownership of WASD.
+    if (drag.current) {
       cameraVelocity.current.set(0, 0, 0)
-      if (props.draft && (direction.x || direction.z)) {
-        let active = props.draft
-        if (keyboardRaw.current?.preview === active)
-          active = keyboardRaw.current.raw
-        let dx = direction.x * dt * (precise ? 0.18 : 1.4),
-          dz = direction.z * dt * (precise ? 0.18 : 1.4)
-        const parent = props.items.find((i) => i.id === active.surfaceId)
-        if (parent) {
-          const local = surfaceLocal({ ...parent, x: 0, z: 0 }, dx, dz)
-          dx = local.x
-          dz = local.z
-        }
-        keyboardRaw.current = keyboardPlacement(active, dx, dz, props.items)
-        props.onDraft(keyboardRaw.current.preview)
-        if (drag.current) drag.current.draft = keyboardRaw.current.preview
-      }
     } else {
-      keyboardRaw.current = null
       const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
-        precise ? CAMERA_FAST_SPEED : CAMERA_SPEED,
+        fast ? CAMERA_FAST_SPEED : CAMERA_SPEED,
       )
       const x = smoothAxis(cameraVelocity.current.x, desired.x, dt),
         z = smoothAxis(cameraVelocity.current.z, desired.z, dt)
