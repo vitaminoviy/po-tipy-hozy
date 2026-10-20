@@ -37,9 +37,9 @@ test('small decor supports the floor or an eligible surface and stays within its
     ),
     null,
   )
-  assert.match(
-    validatePlacement({ ...book, surfaceId: 'bed' }, initialItems)!,
-    /поверхность/,
+  assert.equal(
+    validatePlacement({ ...book, surfaceId: 'bed' }, initialItems),
+    null,
   )
 })
 test('surface decor collisions are local to the same support', () => {

@@ -1,4 +1,10 @@
 import { supportHeight } from './grounding'
+import {
+  softSurfaceZones,
+  furnitureVolumes,
+  smallVolumes,
+  type CollisionVolume,
+} from './placementGeometry'
 
 export type Kind =
   | 'sofa'
@@ -22,6 +28,7 @@ export type Item = {
   z: number
   rotation: number
   surfaceId?: string
+  surfaceZone?: string
   drawerIndex?: number
   drawers?: [boolean, boolean, boolean]
   lampOn?: boolean
@@ -217,14 +224,42 @@ export function drawerSpecs(item: Item) {
 }
 export function support(item: Item, parent: Item) {
   if (item.drawerIndex === undefined) {
+    const zones = softSurfaceZones(parent.kind)
+    if (zones.length) {
+      const zone = item.surfaceZone
+        ? zones.find((zone) => zone.id === item.surfaceZone)
+        : zones[0]
+      return (
+        zone && {
+          ...zone,
+          type: 'soft' as const,
+          lift: 0.001,
+          open: true,
+          clearance: Infinity,
+        }
+      )
+    }
     const top = catalog[parent.kind].surface
-    return top && { ...top, center: 0, open: true, clearance: Infinity }
+    return (
+      top && {
+        ...top,
+        center: 0,
+        centerX: 0,
+        type: 'hard' as const,
+        lift: 0.006,
+        open: true,
+        clearance: Infinity,
+      }
+    )
   }
   const drawer = drawerSpecs(parent)[item.drawerIndex]
   return (
     drawer && {
       height: drawer.y - 0.09,
       size: drawer.inner,
+      centerX: 0,
+      type: 'drawer' as const,
+      lift: 0.006,
       center:
         drawer.center +
         (parent.drawers?.[item.drawerIndex] ? DRAWER_TRAVEL : 0),
@@ -232,6 +267,28 @@ export function support(item: Item, parent: Item) {
       clearance: drawer.height,
     }
   )
+}
+export function surfaceAnchors(
+  parent: Item,
+): Pick<Item, 'surfaceZone' | 'drawerIndex'>[] {
+  const zones = softSurfaceZones(parent.kind)
+  return [
+    ...(zones.length
+      ? zones.map((zone) => ({
+          surfaceZone: zone.id,
+          drawerIndex: undefined,
+        }))
+      : [
+          {
+            surfaceZone: undefined,
+            drawerIndex: undefined,
+          },
+        ]),
+    ...drawerSpecs(parent).map((_, drawerIndex) => ({
+      surfaceZone: undefined,
+      drawerIndex,
+    })),
+  ]
 }
 export function worldPose(item: Item, items: Item[]): WorldItem {
   const parent = items.find((i) => i.id === item.surfaceId),
@@ -246,9 +303,11 @@ export function worldPose(item: Item, items: Item[]): WorldItem {
     s = Math.sin(angle)
   return {
     ...item,
-    x: parent.x + c * item.x + s * (item.z + surface.center),
-    z: parent.z - s * item.x + c * (item.z + surface.center),
-    y: surface.height + 0.006,
+    x:
+      parent.x + c * (item.x + surface.centerX) + s * (item.z + surface.center),
+    z:
+      parent.z - s * (item.x + surface.centerX) + c * (item.z + surface.center),
+    y: surface.height + surface.lift,
     rotation: (parent.rotation + item.rotation) % 4,
   }
 }
@@ -270,7 +329,7 @@ export function validateSurfacePlacement(
 ): string | null {
   const parent = items.find((i) => i.id === item.surfaceId),
     surface = parent && support(item, parent)
-  if (!surface) return 'Нужна поверхность стола, тумбы или комода'
+  if (!surface) return 'Нужна подходящая поверхность или открытый ящик'
   if (!surface.open) return 'Сначала откройте ящик'
   if (catalog[item.kind].height + 0.006 > surface.clearance)
     return 'Предмет слишком высокий для ящика'
@@ -281,13 +340,18 @@ export function validateSurfacePlacement(
     Math.abs(bounds.z) + bounds.d / 2 > surface.size[1] / 2 - margin + 1e-6
   )
     return 'Предмет выходит за край поверхности'
+  if (
+    surface.type === 'soft' &&
+    floorClearance(item, parent!, items) < CONTACT_GAP - 1e-6
+  )
+    return 'Предмет пересекает спинку, подлокотник или выступ поверхности'
   for (const other of items) {
     if (
       other.id !== item.id &&
       isSmall(other) &&
       other.surfaceId === item.surfaceId &&
       other.drawerIndex === item.drawerIndex &&
-      clearanceBetween(item, other) <
+      smallItemClearance(item, other, items) <
         (item.drawerIndex === undefined ? SMALL_GAP : 0.035) - 1e-6
     )
       return 'На поверхности уже есть другой предмет'
@@ -299,6 +363,7 @@ export function footprint(item: Item): [number, number] {
   return item.rotation % 2 ? [d, w] : [w, d]
 }
 export const SMALL_GAP = 0.012
+export const CONTACT_GAP = 0.003
 type Bounds = { x: number; z: number; w: number; d: number; circle: boolean }
 
 function localBounds(
@@ -327,40 +392,63 @@ export function collisionBounds(item: Item): Bounds {
   return localBounds(item, w, d, 0, 0, catalog[item.kind].shape === 'circle')
 }
 
-// For the three floor-size objects (height <= .214), elevated upholstery,
-// tabletops, handles and lamp shades must not inflate the floor collision area.
-// These conservative silhouettes enclose all low geometry, including drawer 1.
-function floorCollisionParts(item: Item): Bounds[] {
-  switch (item.kind) {
-    case 'sofa':
-      return [localBounds(item, 2.46, 1.08)]
-    case 'chair':
-      return [localBounds(item, 0.98, 0.98)]
-    case 'bed':
-      return [localBounds(item, 2, 2.65)]
-    case 'cabinet': {
-      const travel = item.drawers?.[0] ? DRAWER_TRAVEL : 0
-      return [localBounds(item, 1.5, 0.685 + travel, 0, 0.0175 + travel / 2)]
-    }
-    case 'nightstand':
-      return [localBounds(item, 0.7, 0.6)]
-    case 'table':
-      return [-0.5, 0.5].flatMap((x) =>
-        [-0.28, 0.28].map((z) => localBounds(item, 0.09, 0.09, x, z)),
+function volumeClearance(
+  a: Item & { y: number },
+  av: CollisionVolume[],
+  b: Item & { y: number },
+  bv: CollisionVolume[],
+) {
+  let distance = Infinity
+  for (const first of av)
+    for (const second of bv) {
+      const lowA = a.y + first.p[1] - first.s[1] / 2,
+        highA = lowA + first.s[1]
+      const lowB = b.y + second.p[1] - second.s[1] / 2,
+        highB = lowB + second.s[1]
+      if (highA <= lowB + 1e-6 || highB <= lowA + 1e-6) continue
+      distance = Math.min(
+        distance,
+        boundsDistance(
+          localBounds(
+            a,
+            first.s[0],
+            first.s[2],
+            first.p[0],
+            first.p[2],
+            first.circle,
+          ),
+          localBounds(
+            b,
+            second.s[0],
+            second.s[2],
+            second.p[0],
+            second.p[2],
+            second.circle,
+          ),
+        ),
       )
-    case 'plant':
-      return [localBounds(item, 0.54, 0.54, 0, 0, true)]
-    case 'lamp':
-      return [localBounds(item, 0.6, 0.6, 0, 0, true)]
-    default:
-      return [collisionBounds(item)]
-  }
+    }
+  return distance
 }
-
-export function floorClearance(small: Item, other: Item): number {
-  const bounds = collisionBounds(small)
-  return Math.min(
-    ...floorCollisionParts(other).map((part) => boundsDistance(bounds, part)),
+export function smallItemClearance(a: Item, b: Item, items: Item[]): number {
+  return volumeClearance(
+    worldPose(a, items),
+    smallVolumes(a),
+    worldPose(b, items),
+    smallVolumes(b),
+  )
+}
+export function floorClearance(
+  small: Item,
+  other: Item,
+  items: Item[] = [small, other],
+): number {
+  if (isSmall(other)) return smallItemClearance(small, other, items)
+  return volumeClearance(
+    worldPose(small, items),
+    smallVolumes(small),
+    { ...other, y: 0 },
+    furnitureVolumes(other, supportHeight(other, items)),
   )
 }
 export const GRID_STEP = 0.25
@@ -453,9 +541,15 @@ export function validatePlacement(item: Item, items: Item[]): string | null {
       if ((small && item.surfaceId) || (isSmall(other) && other.surfaceId))
         continue
       const distance = small
-        ? floorClearance(item, other)
-        : floorClearance(other, item)
-      if (distance < SMALL_GAP - epsilon)
+        ? floorClearance(item, other, items)
+        : floorClearance(other, item, [
+            ...items.filter((i) => i.id !== item.id),
+            item,
+          ])
+      if (
+        distance <
+        (small && isSmall(other) ? SMALL_GAP : CONTACT_GAP) - epsilon
+      )
         return 'Здесь уже стоит другой предмет'
       continue
     }

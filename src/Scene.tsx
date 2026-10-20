@@ -13,6 +13,7 @@ import {
   isSmall,
   drawerSpecs,
   support,
+  surfaceAnchors,
   DRAWER_TRAVEL,
   type Item,
 } from './placement'
@@ -210,12 +211,9 @@ function Interior(p: Props) {
     const orientation = worldPose(item, props.items).rotation
     let nearest: { item: Item; distance: number } | null = null
     for (const parent of props.items) {
-      const destinations = [
-        undefined,
-        ...drawerSpecs(parent).map((_, index) => index),
-      ]
-      for (const drawerIndex of destinations) {
-        const surface = support({ ...item, drawerIndex }, parent)
+      for (const anchor of surfaceAnchors(parent)) {
+        const { drawerIndex } = anchor
+        const surface = support({ ...item, ...anchor }, parent)
         if (!surface || !surface.open) continue
         if (drawerIndex !== undefined)
           surface.center =
@@ -227,6 +225,7 @@ function Interior(p: Props) {
         )
         if (!hit) continue
         const underCursor = surfaceLocal(parent, hit.x, hit.z)
+        underCursor.x -= surface.centerX
         underCursor.z -= surface.center
         const reach = drawerIndex === undefined ? 0 : 0.14
         if (
@@ -236,6 +235,7 @@ function Interior(p: Props) {
           continue
         const local = surfaceLocal(parent, hit.x - offset.x, hit.z - offset.z),
           distance = hit.distanceToSquared(raycaster.ray.origin)
+        local.x -= surface.centerX
         local.z -= surface.center
         if (!nearest || distance < nearest.distance)
           nearest = {
@@ -243,7 +243,7 @@ function Interior(p: Props) {
               ...item,
               ...local,
               surfaceId: parent.id,
-              drawerIndex,
+              ...anchor,
               rotation: (orientation - parent.rotation + 4) % 4,
             },
             distance,
@@ -257,6 +257,7 @@ function Interior(p: Props) {
             {
               ...item,
               surfaceId: undefined,
+              surfaceZone: undefined,
               drawerIndex: undefined,
               rotation: orientation,
             },
