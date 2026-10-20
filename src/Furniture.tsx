@@ -9,6 +9,7 @@ import {
   Color,
 } from 'three'
 import type { Item, WorldItem } from './placement'
+import { upholsteredParts } from './furnitureGeometry'
 import { catalog, footprint, drawerSpecs } from './placement'
 import { approach, type Interaction, type Mode } from './history'
 
@@ -157,24 +158,11 @@ function Model({
     cream = '#e9dec9'
   switch (kind) {
     case 'sofa':
-      return (
-        <>
-          <Box p={[0, 0.45, 0]} s={[2.5, 0.55, 1.1]} c="#4e6955" />
-          <Box p={[0, 0.95, -0.43]} s={[2.5, 0.8, 0.24]} c="#6c8468" />
-          {[-1.1, 1.1].map((x) => (
-            <Box key={x} p={[x, 0.78, 0]} s={[0.28, 0.5, 1.1]} c="#6c8468" />
-          ))}
-          {[-0.53, 0.53].map((x) => (
-            <Box
-              key={x}
-              p={[x, 0.78, 0.03]}
-              s={[0.97, 0.15, 0.79]}
-              c="#8ca176"
-            />
-          ))}
-          <Box p={[-0.7, 1, -0.2]} s={[0.42, 0.42, 0.17]} c="#e1d2b3" />
-        </>
-      )
+    case 'chair':
+    case 'bed':
+      return upholsteredParts[kind].map(({ id, ...part }) => (
+        <Box key={id} {...part} />
+      ))
     case 'table':
       return (
         <>
@@ -184,35 +172,6 @@ function Model({
               <Leg key={`${x}${z}`} x={x} z={z} h={0.5} />
             )),
           )}
-        </>
-      )
-    case 'chair':
-      return (
-        <>
-          <Box p={[0, 0.48, 0]} s={[1, 0.5, 1]} c="#b77c56" />
-          <Box p={[0, 0.88, -0.38]} s={[1, 0.65, 0.24]} c="#c58d65" />
-          <Box p={[0, 0.77, 0.06]} s={[0.68, 0.15, 0.7]} c="#d2a17b" />
-          {[-0.43, 0.43].map((x) => (
-            <Box key={x} p={[x, 0.78, 0]} s={[0.14, 0.4, 1]} c="#c58d65" />
-          ))}
-        </>
-      )
-    case 'bed':
-      return (
-        <>
-          <Box p={[0, 0.3, 0]} s={[2, 0.4, 2.65]} c={wood} />
-          <Box p={[0, 0.94, -1.22]} s={[2.08, 1.1, 0.16]} c="#ab8059" />
-          <Box p={[0, 0.6, 0]} s={[1.92, 0.3, 2.5]} c={cream} />
-          <Box p={[0, 0.8, 0.35]} s={[1.96, 0.16, 1.8]} c="#8b9c88" />
-          {[-0.48, 0.48].map((x) => (
-            <Box
-              key={x}
-              p={[x, 0.83, -0.86]}
-              s={[0.8, 0.18, 0.5]}
-              c="#f3ead8"
-            />
-          ))}
-          <Box p={[0, 0.9, 0.96]} s={[1.97, 0.04, 0.42]} c="#849483" />
         </>
       )
     case 'cabinet':
