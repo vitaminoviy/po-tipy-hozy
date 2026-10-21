@@ -11,6 +11,7 @@ import {
 import { isEditing } from './controls'
 import { MASK_SIZE } from './wiping'
 import {
+  fillPaint,
   paintColors,
   paintWalls,
   paintFraction,
@@ -51,24 +52,6 @@ function WallLayer({
   down: (e: ThreeEvent<PointerEvent>, wall: PaintWall) => void
 }) {
   const material = useRef<MeshStandardMaterial>(null)
-  const outline = useMemo(
-    () =>
-      new Float32Array([
-        -wall.w / 2,
-        -wall.h / 2,
-        0.002,
-        wall.w / 2,
-        -wall.h / 2,
-        0.002,
-        wall.w / 2,
-        wall.h / 2,
-        0.002,
-        -wall.w / 2,
-        wall.h / 2,
-        0.002,
-      ]),
-    [wall.w, wall.h],
-  )
   const resources = useMemo(() => {
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = MASK_SIZE
@@ -100,10 +83,19 @@ function WallLayer({
     <>
       <mesh
         position={[wall.x, wall.y, wall.z]}
-        rotation={[0, Math.PI / 2, 0]}
+        rotation={[0, wall.angle, 0]}
         receiveShadow
         userData={{ paintWall: wall.id }}
-        raycast={enabled ? Mesh.prototype.raycast : () => {}}
+        raycast={
+          enabled
+            ? function (this: Mesh, ray, hits) {
+                const candidates: typeof hits = []
+                Mesh.prototype.raycast.call(this, ray, candidates)
+                for (const h of candidates)
+                  if (onWall(wall, wallLocal(wall, h.point))) hits.push(h)
+              }
+            : () => {}
+        }
         onPointerDown={(e) => down(e, wall)}
       >
         <planeGeometry args={[wall.w, wall.h]} />
@@ -115,23 +107,6 @@ function WallLayer({
           roughness={1}
         />
       </mesh>
-      {enabled && (
-        <lineLoop
-          position={[wall.x, wall.y, wall.z]}
-          rotation={[0, Math.PI / 2, 0]}
-          raycast={() => {}}
-        >
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[outline, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial
-            color="#9bad8f"
-            transparent
-            opacity={0.65}
-            depthWrite={false}
-          />
-        </lineLoop>
-      )}
     </>
   )
 }
@@ -188,7 +163,7 @@ export default function PaintScene(p: Props) {
         gl.domElement.releasePointerCapture(g.pointer)
       const view = views.get(g.wall.id)!
       if (commit && g.changed) {
-        if (paintComplete(g.mask)) g.mask.fill(255)
+        if (paintComplete(g.mask, g.wall)) fillPaint(g.mask, g.wall)
         Object.assign(view, { mask: g.mask, color: g.color, changed: true })
         current.current.onCommit(g.wall.id, g.color, g.mask)
       } else
@@ -197,7 +172,7 @@ export default function PaintScene(p: Props) {
           current.current.paint.find((w) => w.id === g.wall.id)!,
           { changed: true },
         )
-      current.current.onProgress(g.wall.id, paintFraction(view.mask))
+      current.current.onProgress(g.wall.id, paintFraction(view.mask, g.wall))
     }
     finishRef.current = finish
     p.cancelRef.current = () => finish(false)
@@ -206,7 +181,12 @@ export default function PaintScene(p: Props) {
       point: { x: number; y: number; z: number },
     ) => {
       roller.current!.visible = true
-      roller.current!.position.set(wall.x + 0.055, point.y, point.z)
+      roller.current!.rotation.y = wall.angle
+      roller.current!.position.set(
+        point.x + Math.sin(wall.angle) * 0.055,
+        point.y,
+        point.z + Math.cos(wall.angle) * 0.055,
+      )
       cover.current!.color.set(
         paintColors[views.get(wall.id)!.color ?? current.current.color].hex,
       )
@@ -247,9 +227,15 @@ export default function PaintScene(p: Props) {
       )
       if (!wall || (g && wall.id !== g.wall.id)) {
         if (g?.last) {
-          const distance = (g.wall.x - ray.ray.origin.x) / ray.ray.direction.x
+          const nx = Math.sin(g.wall.angle),
+            nz = Math.cos(g.wall.angle)
+          const distance =
+            ((g.wall.x - ray.ray.origin.x) * nx +
+              (g.wall.z - ray.ray.origin.z) * nz) /
+            (ray.ray.direction.x * nx + ray.ray.direction.z * nz)
           if (Number.isFinite(distance) && distance > 0) {
             const outside = wallLocal(g.wall, {
+              x: ray.ray.origin.x + ray.ray.direction.x * distance,
               y: ray.ray.origin.y + ray.ray.direction.y * distance,
               z: ray.ray.origin.z + ray.ray.direction.z * distance,
             })
@@ -267,7 +253,7 @@ export default function PaintScene(p: Props) {
                 color: g.color,
                 changed: true,
               })
-              props.onProgress(g.wall.id, paintFraction(g.mask))
+              props.onProgress(g.wall.id, paintFraction(g.mask, g.wall))
             }
           }
         }
@@ -277,7 +263,7 @@ export default function PaintScene(p: Props) {
       }
       showRoller(wall, first!.point)
       if (!g) {
-        props.onProgress(wall.id, paintFraction(views.get(wall.id)!.mask))
+        props.onProgress(wall.id, paintFraction(views.get(wall.id)!.mask, wall))
         return
       }
       const next = wallLocal(wall, first!.point)
@@ -286,7 +272,7 @@ export default function PaintScene(p: Props) {
         const view = views.get(wall.id)!
         view.color = g.color
         view.changed = true
-        props.onProgress(wall.id, paintFraction(g.mask))
+        props.onProgress(wall.id, paintFraction(g.mask, g.wall))
       }
       g.last = next
     }
@@ -344,7 +330,7 @@ export default function PaintScene(p: Props) {
       return
     e.stopPropagation()
     const view = views.get(wall.id)!
-    if (paintComplete(view.mask)) {
+    if (paintComplete(view.mask, wall)) {
       p.onHint('Эта стена уже покрашена')
       return
     }
@@ -368,9 +354,14 @@ export default function PaintScene(p: Props) {
     p.active.current = true
     gl.domElement.setPointerCapture(e.pointerId)
     roller.current!.visible = true
-    roller.current!.position.set(wall.x + 0.055, e.point.y, e.point.z)
+    roller.current!.rotation.y = wall.angle
+    roller.current!.position.set(
+      e.point.x + Math.sin(wall.angle) * 0.055,
+      e.point.y,
+      e.point.z + Math.cos(wall.angle) * 0.055,
+    )
     cover.current!.color.set(paintColors[p.color].hex)
-    p.onProgress(wall.id, paintFraction(mask))
+    p.onProgress(wall.id, paintFraction(mask, wall))
   }
   return (
     <>
@@ -384,7 +375,7 @@ export default function PaintScene(p: Props) {
             down={down}
           />
         ))}
-      <group ref={roller} rotation={[0, Math.PI / 2, 0]} visible={false}>
+      <group ref={roller} visible={false}>
         <mesh
           rotation={[0, 0, Math.PI / 2]}
           userData={{ paintTool: true }}

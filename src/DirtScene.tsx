@@ -26,6 +26,7 @@ import {
 
 const HEIGHT = FLOOR_TOP + 0.004
 type Props = {
+  cancelRef: MutableRefObject<() => void>
   dirt: DirtState[]
   enabled: boolean
   cancelToken: number
@@ -161,6 +162,7 @@ export default function DirtScene(p: Props) {
       current.current.onProgress(g.patch.id, cleanFraction(view.mask))
     }
     finishRef.current = finish
+    p.cancelRef.current = () => finish(false)
     const move = (e: PointerEvent) => {
       const g = gesture.current
       if (!g || e.pointerId !== g.pointer) return
@@ -239,6 +241,7 @@ export default function DirtScene(p: Props) {
     document.addEventListener('visibilitychange', hidden)
     return () => {
       cancel()
+      p.cancelRef.current = () => {}
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', cancel)

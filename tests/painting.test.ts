@@ -13,13 +13,15 @@ import {
 } from '../src/painting'
 import { createHistory, historyReducer } from '../src/history'
 import { MASK_SIZE, cleanFraction } from '../src/wiping'
-const wall = paintWalls[0]
+// Compact reference face for brush-kernel tests; actual House geometry is tested
+// separately in wall-surfaces.test.ts and browser strokes across full walls.
+const wall = { ...paintWalls[0], w: 2.4, h: 1.3 }
 const line = (mask: Uint8Array, y = 0) =>
   paintSegment(mask, wall, { x: -1.1, y }, { x: 1.1, y })
-test('two stable blank walls are independent, finite and have no window or door openings', () => {
+test('stable blank paint masks are independent across both rooms', () => {
   const a = createPaint(),
     b = createPaint()
-  assert.equal(a.length, 2)
+  assert.equal(a.length, paintWalls.length)
   assert.deepEqual(a, b)
   assert.notEqual(a[0].mask, a[1].mask)
   assert.equal(paintFraction(a[0].mask), 0)
@@ -94,10 +96,8 @@ test('outside endpoints are rejected; disconnected re-entry cannot bridge throug
   assert.equal(paintFraction(mask), 0)
 })
 test('wall local coordinates use the actual surface basis and consistent top-row orientation', () => {
-  assert.deepEqual(wallLocal(wall, { y: wall.y + 0.4, z: wall.z - 0.6 }), {
-    x: 0.6,
-    y: 0.3999999999999999,
-  })
+  const local = wallLocal(wall, { y: wall.y + 0.4, z: wall.z - 0.6 })
+  assert.ok(Math.abs(local.x - 0.6) < 1e-10 && Math.abs(local.y - 0.4) < 1e-10)
   const mask = createPaint()[0].mask
   line(mask, 0.45)
   assert.ok(mask.slice(0, 96 * 30).some((v) => v > 0))

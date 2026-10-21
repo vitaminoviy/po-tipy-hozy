@@ -7,6 +7,7 @@ import {
   useMemo,
 } from 'react'
 import Scene from './Scene'
+import type { WorkTool } from './WorkTools'
 import { flushSync } from 'react-dom'
 import {
   advanceRotation,
@@ -19,6 +20,7 @@ import {
 } from './rotation'
 import { cleanFraction, dirtPatches, isClean } from './wiping'
 import {
+  paintedArea,
   paintColors,
   paintWalls,
   paintFraction,
@@ -74,6 +76,13 @@ export default function App() {
     createHistory(),
   )
   const items = history.present
+  const roomPaint = useMemo(
+    () => ({
+      living: paintedArea(history.paint, 'living'),
+      bedroom: paintedArea(history.paint, 'bedroom'),
+    }),
+    [history.paint],
+  )
   const floorOutputs = useRef(new Map<string, HTMLSpanElement>())
   useEffect(() => {
     for (const d of history.dirt) {
@@ -96,13 +105,20 @@ export default function App() {
   }, [])
   const [mode, setMode] = useState<Mode>('move')
   const [paintTool, setPaintTool] = useState(false)
+  const [tool, setTool] = useState<WorkTool>(null)
+  const [natural, setNatural] = useState(true)
+  const [note, setNote] = useState(false)
+  const cancelWipe = useRef<() => void>(() => {})
   const [paintColor, setPaintColor] = useState<PaintColor>('sage')
   const cancelPaint = useRef<() => void>(() => {})
   const activePaint = useRef<string | null>(null)
+  const activeWipe = useRef<string | null>(null)
   const paintOutput = useRef<HTMLOutputElement>(null)
   const paintRoomOutput = useRef<HTMLSpanElement>(null)
   const paintProgress = useCallback((id: string, fraction: number) => {
     activePaint.current = id
+    const legacy = document.querySelector('[data-testid="paint-progress"]')
+    if (legacy) legacy.textContent = String(Math.floor(fraction * 100)) + '%'
     if (paintOutput.current)
       paintOutput.current.textContent = `${Math.floor(fraction * 100)}%`
     if (paintRoomOutput.current)
@@ -111,8 +127,21 @@ export default function App() {
   }, [])
   useEffect(() => {
     const wall = history.paint.find((w) => w.id === activePaint.current)
-    if (wall) paintProgress(wall.id, paintFraction(wall.mask))
+    if (wall && paintTool)
+      paintProgress(
+        wall.id,
+        paintFraction(
+          wall.mask,
+          paintWalls.find((w) => w.id === wall.id),
+        ),
+      )
   }, [history.paint, paintTool, paintProgress])
+  useEffect(() => {
+    const dirt = history.dirt.find((d) => d.id === activeWipe.current)
+    if (tool === 'sponge' && dirt && paintOutput.current)
+      paintOutput.current.textContent =
+        Math.floor(cleanFraction(dirt.mask) * 100) + '%'
+  }, [history.dirt, tool])
   const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraftState] = useState<Item | null>(null)
@@ -129,9 +158,15 @@ export default function App() {
   const [walls, setWalls] = useState(true)
   const [resetCamera, setResetCamera] = useState(0)
   const [message, setMessage] = useState(
-    'Выберите предмет в доме или в списке слева',
+    'Выберите предмет или инструмент возле дома',
   )
   const [help, setHelp] = useState(false)
+  const [notice, setNotice] = useState(true)
+  useEffect(() => {
+    setNotice(true)
+    const timer = setTimeout(() => setNotice(false), 3500)
+    return () => clearTimeout(timer)
+  }, [message])
   const rotationMotion = useRef<RotationMotion | null>(null)
   const rotationKeys = useRef(new Set<string>())
   const rotationTime = useRef(0)
@@ -201,6 +236,9 @@ export default function App() {
   }, [setDraft])
   const switchMode = useCallback(() => {
     cancelPaint.current()
+    cancelWipe.current()
+    setNatural(false)
+    setTool(null)
     setPaintTool(false)
     cancelTransfer()
     cancelCleaning()
@@ -238,7 +276,7 @@ export default function App() {
   const interact = useCallback(
     (id: string, action: Interaction) => {
       const target = items.find((i) => i.id === id)
-      if (!target || draft) return
+      if (!target || (draft && action.kind !== 'lamp')) return
       if (action.kind === 'take') {
         startPlacement(id)
         return
@@ -263,6 +301,7 @@ export default function App() {
   const travel = useCallback(
     (type: 'undo' | 'redo') => {
       cancelPaint.current()
+      cancelWipe.current()
       cancelTransfer()
       cancelCleaning()
       dispatch({ type })
@@ -275,7 +314,8 @@ export default function App() {
     [cancelTransfer, cancelCleaning],
   )
   const pickTrash = (id: string) => {
-    if (mode !== 'interact' || draft || disposalRef.current) return
+    if ((!natural && mode !== 'interact') || draft || disposalRef.current)
+      return
     const target = history.trash.find(
       (t) => t.id === id && t.state !== 'disposed',
     )
@@ -339,7 +379,7 @@ export default function App() {
   }
   const useBin = (binId: string) => {
     if (disposalRef.current) return
-    if (!selectedTrash || mode !== 'interact' || draft) {
+    if (!selectedTrash || (!natural && mode !== 'interact') || draft) {
       setMessage(
         'Ведро принимает мусор: выберите его в режиме «Взаимодействие».',
       )
@@ -552,6 +592,12 @@ export default function App() {
         }
       }
       if (e.key === 'Escape') {
+        cancelPaint.current()
+        cancelWipe.current()
+        setTool(null)
+        setPaintTool(false)
+        setNatural(true)
+        setNote(false)
         cancelCleaning()
         if (selectedTrash || disposal)
           setMessage('Подбор отменён — мусор остался в комнате')
@@ -576,102 +622,232 @@ export default function App() {
     selectedTrash,
     disposal,
   ])
+  const chooseTool = (next: WorkTool) => {
+    cancelPaint.current()
+    cancelWipe.current()
+    cancelTransfer()
+    cancelCleaning()
+    setNatural(true)
+    setTool(next)
+    if (paintOutput.current) paintOutput.current.textContent = ''
+    if (paintRoomOutput.current) paintRoomOutput.current.textContent = ''
+    setPaintTool(next === 'roller')
+    setSelected(null)
+    if (next === 'roller') setWalls(true)
+    setMessage(
+      next === 'roller'
+        ? 'Выберите баночку краски и ведите валиком по стене'
+        : next === 'sponge'
+          ? 'Удерживайте ЛКМ и протирайте грязь на полу'
+          : 'Выберите предмет или инструмент возле дома',
+    )
+  }
+  const stopGesture = () => {
+    cancelPaint.current()
+    cancelWipe.current()
+    cancelTransfer()
+  }
   return (
     <div className="app">
-      <header>
-        <a className="brand" href="./">
-          <span className="brand-icon">⌂</span>
-          <span>
-            тихий дом<small>МЕСТО ДЛЯ ВАШИХ ИДЕЙ</small>
-          </span>
-        </a>
-        <div className="project-name">
-          Первый дом <span>/</span> Свободное обустройство
+      <main className="diorama" aria-label="Дом и инструменты">
+        <div
+          className={'scene' + (placing ? ' placing' : '')}
+          style={{ pointerEvents: note ? 'none' : undefined }}
+        >
+          <Scene
+            tool={tool}
+            natural={natural}
+            selectedTrash={!!selectedTrash}
+            cancelWipe={cancelWipe}
+            onTool={chooseTool}
+            onColor={(color) => {
+              cancelPaint.current()
+              setPaintColor(color)
+              setMessage(paintColors[color].name)
+            }}
+            paint={history.paint}
+            paintTool={paintTool}
+            paintColor={paintColor}
+            cancelPaint={cancelPaint}
+            onPaintBegin={() => {
+              cancelCleaning()
+              setSelected(null)
+              setMessage(
+                'Удерживайте ЛКМ и двигайте валик; Esc — отменить мазок',
+              )
+            }}
+            onPaintCommit={(id, color, mask) => {
+              dispatch({ type: 'paint', id, color, mask })
+              setMessage(
+                paintComplete(
+                  mask,
+                  paintWalls.find((w) => w.id === id),
+                )
+                  ? 'Стена покрашена!'
+                  : 'Мазок нанесён. Продолжайте покраску; Ctrl+Z — отменить мазок.',
+              )
+            }}
+            onPaintProgress={paintProgress}
+            dirt={history.dirt}
+            onWipeBegin={() => {
+              cancelCleaning()
+              setSelected(null)
+              setMessage(
+                'Удерживайте ЛКМ и двигайте тряпку по грязи; Esc — отменить жест',
+              )
+            }}
+            onWipeCommit={(id, mask) => {
+              dispatch({ type: 'wipe', id, mask })
+              setMessage(
+                isClean(mask)
+                  ? 'Поверхность очищена!'
+                  : 'Протирание завершено. Продолжайте с оставшихся участков; Ctrl+Z — отменить жест.',
+              )
+            }}
+            onWipeProgress={(id, fraction) => {
+              activeWipe.current = id
+              if (paintOutput.current)
+                paintOutput.current.textContent =
+                  Math.floor(fraction * 100) + '%'
+              if (paintRoomOutput.current)
+                paintRoomOutput.current.textContent =
+                  roomNames[dirtPatches.find((d) => d.id === id)!.room]
+              const output = floorOutputs.current.get(id)
+              if (output) output.textContent = `${Math.floor(fraction * 100)}%`
+            }}
+            items={items}
+            selected={selected}
+            draft={draft}
+            getDraft={getDraft}
+            onMove={queueMove}
+            flushMove={flushMove}
+            placing={placing}
+            walls={walls}
+            resetCamera={resetCamera}
+            onSelect={selectItem}
+            onDraft={setDraft}
+            onCommit={commit}
+            onDrop={drop}
+            onMessage={setMessage}
+            onPlacementEnd={() => setPlacing(false)}
+            mode={mode}
+            cancelToken={cancelToken}
+            onInteract={interact}
+            onTake={startPlacement}
+            trash={history.trash}
+            disposal={disposal}
+            binFeedback={binFeedback}
+            onTrashPick={pickTrash}
+            onBin={useBin}
+            onQuickClean={quickClean}
+            onDisposalComplete={finishDisposal}
+          />
         </div>
-        <span className="version">
-          <i /> ПРОТОТИП 0.6
-        </span>
-      </header>
-      <div className="workspace">
-        <aside>
-          <div className="eyebrow">НЕБОЛЬШОЕ НАЧАЛО</div>
-          <h1>
-            Дом, в который
-            <br />
-            хочется вернуться.
-          </h1>
-          <p className="intro">
-            Две комнаты. Мягкий свет.
-            <br />И немного места для перемен.
-          </p>
-          <div className="section-title">
-            Предметы в доме{' '}
-            <span>{items.length.toString().padStart(2, '0')}</span>
-          </div>
-          <div className="item-list">
-            {items.map((i) => (
-              <button
-                key={i.id}
-                aria-label={itemName(i)}
-                aria-pressed={selected === i.id}
-                className={'item ' + (selected === i.id ? 'active' : '')}
-                onClick={() => {
-                  if (!draft) {
-                    if (selectItem(i.id))
-                      setMessage(
-                        'E — взаимодействовать; для переноса перетащите мышью или нажмите «Переместить»',
-                      )
-                  }
-                }}
-              >
+      </main>
+      <button
+        className={'note-toggle' + (note ? ' open' : '')}
+        aria-label={note ? 'Закрыть записку' : 'Открыть записку'}
+        aria-expanded={note}
+        onClick={() => {
+          stopGesture()
+          setNote(!note)
+        }}
+      >
+        {note ? '‹' : '›'}
+      </button>
+      <section
+        className={'owner-note' + (note ? ' open' : '')}
+        aria-label="Записка для нового хозяина"
+        inert={!note}
+        aria-hidden={!note}
+      >
+        <h1>Записка для нового хозяина</h1>
+        <p>Привет!</p>
+        <p>
+          Этот домик давно ждёт, когда о нём кто-нибудь позаботится. Здесь
+          осталось немного работы. Надеюсь, тебе удастся снова сделать его
+          уютным.
+        </p>
+        {(['living', 'bedroom'] as const).map((room) => {
+          const trash = cleaningProgress(history.trash, room)
+          const dirt = history.dirt.find((d) => d.id === 'floor-' + room)!
+          const painted = roomPaint[room]
+          return (
+            <div key={room} className="note-tasks">
+              <h2>{roomNames[room]}</h2>
+              <p data-testid={'task-trash-' + room}>
+                {trash.disposed === trash.total ? '☑' : '☐'} Убрать мусор{' '}
+                <small>
+                  {trash.disposed} / {trash.total}
+                </small>
+              </p>
+              <p data-testid={'task-floor-' + room}>
+                {isClean(dirt.mask) ? '☑' : '☐'} Отмыть пол{' '}
+                <small>{Math.floor(cleanFraction(dirt.mask) * 100)}%</small>
+              </p>
+              <p data-testid={'task-paint-' + room}>
+                {painted >= 0.999 ? '☑' : '☐'} Покрасить стены{' '}
+                <small>{Math.floor(painted * 100)}%</small>
+              </p>
+            </div>
+          )
+        })}
+        <p>
+          Удачи!
+          <br />
+          Прежний хозяин
+        </p>
+        <div className="room-labels" aria-label="Прогресс уборки">
+          {(['living', 'bedroom'] as const).map((room) => {
+            const progress = cleaningProgress(history.trash, room)
+            return (
+              <span key={room} data-testid={`cleaning-${room}`}>
+                <b>{roomNames[room]}</b> · Убрано {progress.disposed} /{' '}
+                {progress.total}
+                {' · Пол '}
                 <span
-                  className="swatch"
-                  style={{
-                    background: catalog[i.kind].color + '24',
-                    color: catalog[i.kind].color,
+                  data-testid={`floor-${room}`}
+                  ref={(node) => {
+                    const id = dirtPatches.find((d) => d.room === room)!.id
+                    if (node) floorOutputs.current.set(id, node)
+                    else floorOutputs.current.delete(id)
                   }}
                 >
-                  {catalog[i.kind].icon}
+                  {Math.floor(
+                    cleanFraction(
+                      history.dirt.find((d) => d.id === `floor-${room}`)!.mask,
+                    ) * 100,
+                  )}
+                  %
                 </span>
-                <span>
-                  {itemName(i)}
-                  <small>
-                    {worldPose(i, items).x < 0 ? 'Гостиная' : 'Спальня'} ·{' '}
-                    {categoryNames[catalog[i.kind].category]}
-                  </small>
-                </span>
-                <span className="item-arrow">↗</span>
-              </button>
-            ))}
-          </div>
-          <div className="sidebar-note">
-            <span>✳</span>
-            <p>
-              Здесь всё можно переставить.
-              <br />
-              Начните с любимого уголка.
-            </p>
-          </div>
-        </aside>
-        <main>
-          <div className="scene-heading">
-            <div>
-              <span className="eyebrow">ВАШЕ ПРОСТРАНСТВО</span>
-              <h2>Маленький дом</h2>
-            </div>
-            <button
-              className="help-button"
-              onClick={() => setHelp(!help)}
-              aria-expanded={help}
-            >
-              ? <span>Управление</span>
-            </button>
-          </div>
+              </span>
+            )
+          })}
+        </div>
+      </section>
+      <details
+        className="house-menu"
+        onToggle={(e) => {
+          if (e.currentTarget.open) {
+            cancelPaint.current()
+            cancelWipe.current()
+          }
+        }}
+      >
+        <summary aria-label="Меню дома">···</summary>
+        <div className="menu-content">
+          <button onClick={() => setHelp(!help)} aria-expanded={help}>
+            Управление
+          </button>
+          <p className="menu-version">
+            Prototype 0.6.1 · Дополнительные команды
+          </p>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">
               <button
                 aria-pressed={mode === 'move'}
                 onClick={() => {
+                  setNatural(false)
                   if (mode !== 'move') switchMode()
                 }}
               >
@@ -680,6 +856,7 @@ export default function App() {
               <button
                 aria-pressed={mode === 'interact'}
                 onClick={() => {
+                  setNatural(false)
                   if (mode !== 'interact') switchMode()
                 }}
               >
@@ -692,11 +869,13 @@ export default function App() {
                     cancelPaint.current()
                     cancelTransfer()
                     cancelCleaning()
+                    cancelWipe.current()
+                    setTool(!paintTool ? 'roller' : null)
                     setPaintTool(!paintTool)
                     if (!paintTool) setWalls(true)
                     setMessage(
                       !paintTool
-                        ? 'Валик: удерживайте ЛКМ и двигайтесь по верхним участкам левой стены гостиной или перегородки спальни; Esc — отменить мазок'
+                        ? 'Валик: выберите баночку и красьте видимые внутренние стены; Esc — убрать инструмент'
                         : 'Покраска выключена',
                     )
                   }}
@@ -740,112 +919,46 @@ export default function App() {
                 </button>
               ))}
               <span>
-                <span ref={paintRoomOutput}>Наведите валик на стену</span> ·
-                Покраска стены:{' '}
-                <output ref={paintOutput} data-testid="paint-progress">
-                  0%
-                </output>
+                <span>Покраска</span> · Покраска стены:{' '}
+                <output data-testid="paint-progress">0%</output>
               </span>
             </div>
           )}
-          <div className={'scene' + (placing ? ' placing' : '')}>
-            <Scene
-              paint={history.paint}
-              paintTool={paintTool}
-              paintColor={paintColor}
-              cancelPaint={cancelPaint}
-              onPaintBegin={() => {
-                cancelCleaning()
-                setSelected(null)
-                setMessage(
-                  'Удерживайте ЛКМ и двигайте валик; Esc — отменить мазок',
-                )
-              }}
-              onPaintCommit={(id, color, mask) => {
-                dispatch({ type: 'paint', id, color, mask })
-                setMessage(
-                  paintComplete(mask)
-                    ? 'Стена покрашена!'
-                    : 'Мазок нанесён. Продолжайте покраску; Ctrl+Z — отменить мазок.',
-                )
-              }}
-              onPaintProgress={paintProgress}
-              dirt={history.dirt}
-              onWipeBegin={() => {
-                cancelCleaning()
-                setSelected(null)
-                setMessage(
-                  'Удерживайте ЛКМ и двигайте тряпку по грязи; Esc — отменить жест',
-                )
-              }}
-              onWipeCommit={(id, mask) => {
-                dispatch({ type: 'wipe', id, mask })
-                setMessage(
-                  isClean(mask)
-                    ? 'Поверхность очищена!'
-                    : 'Протирание завершено. Продолжайте с оставшихся участков; Ctrl+Z — отменить жест.',
-                )
-              }}
-              onWipeProgress={(id, fraction) => {
-                const output = floorOutputs.current.get(id)
-                if (output)
-                  output.textContent = `${Math.floor(fraction * 100)}%`
-              }}
-              items={items}
-              selected={selected}
-              draft={draft}
-              getDraft={getDraft}
-              onMove={queueMove}
-              flushMove={flushMove}
-              placing={placing}
-              walls={walls}
-              resetCamera={resetCamera}
-              onSelect={selectItem}
-              onDraft={setDraft}
-              onCommit={commit}
-              onDrop={drop}
-              onMessage={setMessage}
-              onPlacementEnd={() => setPlacing(false)}
-              mode={mode}
-              cancelToken={cancelToken}
-              onInteract={interact}
-              onTake={startPlacement}
-              trash={history.trash}
-              disposal={disposal}
-              binFeedback={binFeedback}
-              onTrashPick={pickTrash}
-              onBin={useBin}
-              onQuickClean={quickClean}
-              onDisposalComplete={finishDisposal}
-            />
-          </div>
-          <div className="room-labels" aria-label="Прогресс уборки">
-            {(['living', 'bedroom'] as const).map((room) => {
-              const progress = cleaningProgress(history.trash, room)
-              return (
-                <span key={room} data-testid={`cleaning-${room}`}>
-                  <b>{roomNames[room]}</b> · Убрано {progress.disposed} /{' '}
-                  {progress.total}
-                  {' · Пол '}
-                  <span
-                    data-testid={`floor-${room}`}
-                    ref={(node) => {
-                      const id = dirtPatches.find((d) => d.room === room)!.id
-                      if (node) floorOutputs.current.set(id, node)
-                      else floorOutputs.current.delete(id)
-                    }}
-                  >
-                    {Math.floor(
-                      cleanFraction(
-                        history.dirt.find((d) => d.id === `floor-${room}`)!
-                          .mask,
-                      ) * 100,
-                    )}
-                    %
-                  </span>
+          <div className="item-list">
+            {items.map((i) => (
+              <button
+                key={i.id}
+                aria-label={itemName(i)}
+                aria-pressed={selected === i.id}
+                className={'item ' + (selected === i.id ? 'active' : '')}
+                onClick={() => {
+                  if (!draft) {
+                    if (selectItem(i.id))
+                      setMessage(
+                        'E — взаимодействовать; для переноса перетащите мышью или нажмите «Переместить»',
+                      )
+                  }
+                }}
+              >
+                <span
+                  className="swatch"
+                  style={{
+                    background: catalog[i.kind].color + '24',
+                    color: catalog[i.kind].color,
+                  }}
+                >
+                  {catalog[i.kind].icon}
                 </span>
-              )
-            })}
+                <span>
+                  {itemName(i)}
+                  <small>
+                    {worldPose(i, items).x < 0 ? 'Гостиная' : 'Спальня'} ·{' '}
+                    {categoryNames[catalog[i.kind].category]}
+                  </small>
+                </span>
+                <span className="item-arrow">↗</span>
+              </button>
+            ))}
           </div>
           <div className="view-tools">
             <button
@@ -895,25 +1008,22 @@ export default function App() {
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
               </p>
               <small>
-                Пол: в режиме «Взаимодействие» удерживайте ЛКМ и протирайте
-                грязь мышью. Esc отменяет текущий жест; Ctrl+Z возвращает
-                стёртую грязь. Shift + ЛКМ по мусору — быстрая уборка в любом
-                режиме. Уборка: включите «Взаимодействие», нажмите на мусор,
-                затем на ведро. Esc отменяет подбор; Ctrl+Z возвращает
-                выброшенный мусор. E — действие выбранного предмета: ящик,
-                торшер или взять вещь. Tab — переключить режим для кликов мышью.
-                Enter — установить; Esc — отменить. Shift+WASD — ускорение
-                камеры; Home — исходный вид. Книгу, чашку и коробку можно взять
-                и поставить на пол, ковёр, стол, тумбу, комод, матрас или
-                сиденье либо в открытый ящик. Для удобства есть кнопки «В ящик»;
-                содержимое закрытого ящика можно достать после его открытия.
-                Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор. Мягкая привязка
-                к сетке 0,25 м: между линиями движение свободное. Зелёный контур
-                — можно поставить, красный — нельзя. Между мебелью — зазор 2 см.
-                Для ковра под мебелью: выберите его в списке, нажмите
-                «Переместить», наведите на пол и щёлкните. R поворачивает и
-                предпросмотр; Esc отменяет. На сенсорном экране: перенос одним
-                пальцем, камера — двумя.
+                Нажмите на валик или губку перед домом, чтобы выбрать
+                инструмент. Валик красит стену, губка протирает грязь;
+                удерживайте ЛКМ и двигайте мышь. Esc или повторный выбор
+                инструмента возвращают обычное взаимодействие. Мебель
+                переносится мышью, ящик открывается кликом по фасаду, торшер
+                включается обычным кликом. Мусор: выберите его, затем ведро;
+                Shift + ЛКМ быстро отправляет мусор в ведро своей комнаты. E —
+                действие выбранного предмета; Tab — необязательные прежние
+                режимы. Enter — установить; Esc — отменить. Shift+WASD ускоряет
+                камеру, Home возвращает исходный вид. Книгу, чашку и коробку
+                можно ставить на пол, ковры, мебель, мягкие поверхности и в
+                открытые ящики. Список вещей и команды хранения доступны в этом
+                меню. Ctrl+Z — отмена; Ctrl+Y / Ctrl+Shift+Z — повтор. Зелёный
+                контур разрешает размещение, красный показывает конфликт; зазор
+                между мебелью — 2 см. Записка слева показывает работы по
+                комнатам.
               </small>
             </div>
           )}
@@ -1076,9 +1186,14 @@ export default function App() {
               )}
             </div>
           </div>
-        </main>
+        </div>
+      </details>
+      <div className="tool-context" hidden={!tool}>
+        <span>{tool === 'roller' ? 'Валик' : 'Губка'} · Esc — убрать</span>
+        <span ref={paintRoomOutput} />
+        <output ref={paintOutput} data-testid="active-tool-progress" />
       </div>
-      <footer>
+      <footer hidden={!notice && !draft}>
         <span role="status" className={placementError ? 'invalid' : ''}>
           <i />
           {draft

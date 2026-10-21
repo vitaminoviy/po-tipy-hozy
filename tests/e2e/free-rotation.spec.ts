@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 const pose = (p: Page) => p.getByTestId('pose')
 async function angle(p: Page) {
   const value = Number(

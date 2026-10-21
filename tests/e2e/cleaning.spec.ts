@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 import { OrthographicCamera, Vector3 } from 'three'
 import {
   initialTrash,
@@ -227,11 +227,19 @@ test('progress remains visible on a narrow screen without overflow', async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await open(page)
-  await expect(progress(page, 'living')).toBeVisible()
-  await expect(progress(page, 'bedroom')).toBeVisible()
-  const labels = (await page.getByLabel('Прогресс уборки').boundingBox())!
-  const tools = (await page.locator('.view-tools').boundingBox())!
-  expect(labels.y + labels.height).toBeLessThan(tools.y)
+  await page.locator('.house-menu').evaluate((menu: HTMLDetailsElement) => {
+    menu.open = false
+  })
+  await page.getByRole('button', { name: 'Открыть записку' }).click()
+  await expect(page.getByTestId('task-trash-living')).toBeVisible()
+  await expect(page.getByTestId('task-trash-bedroom')).toBeVisible()
+  const note = (await page
+    .getByRole('region', { name: 'Записка для нового хозяина' })
+    .boundingBox())!
+  expect(note.width).toBeLessThan(390)
+  await expect(
+    page.getByRole('button', { name: 'Закрыть записку' }),
+  ).toBeVisible()
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

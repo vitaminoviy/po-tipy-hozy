@@ -1,0 +1,112 @@
+import { useState } from 'react'
+import type { ThreeEvent } from '@react-three/fiber'
+import { Box } from './Furniture'
+import { paintColors, type PaintColor } from './painting'
+export type WorkTool = 'roller' | 'sponge' | null
+export const toolPositions = {
+  roller: [-3.6, -0.14, 4.6],
+  sponge: [-2.4, -0.14, 4.6],
+  cream: [-0.9, -0.035, 4.6],
+  sage: [0.1, -0.035, 4.6],
+  terracotta: [1.1, -0.035, 4.6],
+} as const
+export default function WorkTools({
+  tool,
+  color,
+  onTool,
+  onColor,
+  onHint,
+}: {
+  tool: WorkTool
+  color: PaintColor
+  onTool: (t: WorkTool) => void
+  onColor: (c: PaintColor) => void
+  onHint: (s: string) => void
+}) {
+  const [hover, setHover] = useState<string | null>(null)
+  const events = (id: string, label: string, action: () => void) => ({
+    onPointerOver: (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation()
+      setHover(id)
+      document.body.style.cursor = 'pointer'
+      onHint(label)
+    },
+    onPointerOut: () => {
+      setHover(null)
+      document.body.style.cursor = 'auto'
+    },
+    onPointerDown: (e: ThreeEvent<PointerEvent>) => {
+      if (e.button !== 0) return
+      e.stopPropagation()
+      action()
+    },
+  })
+  return (
+    <group>
+      <Box p={[-1.25, -0.35, 4.65]} s={[6.6, 0.28, 1.1]} c="#c6bea8" />
+      {(['roller', 'sponge'] as const).map((id) => (
+        <group
+          key={id}
+          position={[...toolPositions[id]]}
+          userData={{ workTool: id }}
+          {...events(
+            id,
+            id === 'roller'
+              ? 'Валик — покраска стен'
+              : 'Губка — протирание пола',
+            () => onTool(tool === id ? null : id),
+          )}
+        >
+          <Box
+            p={[0, -0.03, 0]}
+            s={[0.85, 0.08, 0.78]}
+            c={tool === id ? '#9bad8f' : hover === id ? '#e9dec9' : '#c6bea8'}
+          />
+          {id === 'roller' ? (
+            <group>
+              <mesh position={[0, 0.13, 0]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.12, 0.12, 0.65, 16]} />
+                <meshStandardMaterial color={paintColors[color].hex} />
+              </mesh>
+              <Box p={[0.3, 0.09, 0.18]} s={[0.035, 0.035, 0.35]} c="#a8a89b" />
+              <Box p={[0.3, 0.09, 0.37]} s={[0.11, 0.1, 0.25]} c="#b89468" />
+            </group>
+          ) : (
+            <Box p={[0, 0.08, 0]} s={[0.55, 0.16, 0.38]} c="#cbbf88" />
+          )}
+          <mesh position={[0, 0.1, 0]}>
+            <boxGeometry args={[0.9, 0.45, 0.8]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        </group>
+      ))}
+      {(Object.keys(paintColors) as PaintColor[]).map((id) => (
+        <group
+          key={id}
+          position={[...toolPositions[id]]}
+          userData={{ paintSample: id }}
+          {...events(id, paintColors[id].name, () => onColor(id))}
+        >
+          <mesh>
+            <cylinderGeometry args={[0.24, 0.22, 0.36, 20]} />
+            <meshStandardMaterial color="#b9b9aa" />
+          </mesh>
+          <mesh position={[0, 0.19, 0]}>
+            <cylinderGeometry args={[0.225, 0.225, 0.035, 20]} />
+            <meshStandardMaterial color={paintColors[id].hex} />
+          </mesh>
+          <mesh position={[0, -0.16, 0]}>
+            <cylinderGeometry args={[0.31, 0.31, 0.03, 24]} />
+            <meshStandardMaterial
+              color={
+                color === id ? '#66795d' : hover === id ? '#e9dec9' : '#c6bea8'
+              }
+            />
+          </mesh>
+        </group>
+      ))}
+      {/* Reserved empty place for a future tool; no inactive picking target. */}
+      <Box p={[-4.25, -0.1975, 4.65]} s={[0.3, 0.025, 0.65]} c="#b4b09b" />
+    </group>
+  )
+}

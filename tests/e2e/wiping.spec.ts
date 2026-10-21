@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 import { OrthographicCamera, Vector3 } from 'three'
 import { dirtPatches, type DirtPatch } from '../../src/wiping'
 import { initialTrash } from '../../src/cleaning'
@@ -104,7 +104,9 @@ test('both patches visibly erase along strokes, reach completion and restore wit
   await page.screenshot({ path: 'artifacts/05-initial-house.png' })
   await page.getByRole('button', { name: 'Скрыть стены' }).click()
   await page.mouse.move(900, 500)
-  for (let i = 0; i < 14; i++) await page.mouse.wheel(0, -300)
+  // The responsive camera now permits a closer zoom. Keep this fixture near
+  // the former 95px/m view so both floor patches remain inside the canvas.
+  await page.mouse.wheel(0, -100)
   await waitForCameraStill(page)
   for (const patch of dirtPatches) {
     const center = await point(page, patch.x, patch.z)

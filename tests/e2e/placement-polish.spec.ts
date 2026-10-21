@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 import { OrthographicCamera, Vector3 } from 'three'
 
 const select = (page: Page, name: string) =>

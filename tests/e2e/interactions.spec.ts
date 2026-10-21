@@ -1,5 +1,5 @@
 import { quarterTurn, buttonQuarterTurn } from './support/rotation'
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 import { OrthographicCamera, Vector3 } from 'three'
 
 async function open(page: Page) {
@@ -20,9 +20,12 @@ async function point(page: Page, x: number, y: number, z: number) {
       0.1,
       250,
     )
-  camera.position.set(12, 11, 15)
-  camera.lookAt(0, 0, 0)
-  camera.zoom = Math.min(46, b.width / 14, b.height / 10)
+  const state = JSON.parse(
+    (await page.locator('canvas').getAttribute('data-camera'))!,
+  )
+  camera.position.fromArray(state.position)
+  camera.lookAt(new Vector3().fromArray(state.target))
+  camera.zoom = state.zoom
   camera.updateProjectionMatrix()
   camera.updateMatrixWorld()
   const p = new Vector3(x, y, z).project(camera)

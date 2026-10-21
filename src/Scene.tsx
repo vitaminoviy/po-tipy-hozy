@@ -10,6 +10,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
+import WorkTools, { type WorkTool } from './WorkTools'
 import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
 import Cleaning from './TrashScene'
@@ -86,6 +87,12 @@ function StoredContents({
 }
 
 type Props = {
+  tool: WorkTool
+  natural: boolean
+  selectedTrash: boolean
+  cancelWipe: MutableRefObject<() => void>
+  onTool: (t: WorkTool) => void
+  onColor: (c: PaintColor) => void
   paint: PaintState[]
   paintTool: boolean
   paintColor: PaintColor
@@ -126,7 +133,12 @@ type Props = {
 }
 function Interior(p: Props) {
   const { camera, gl, raycaster, size, scene } = useThree()
-  const fitZoom = Math.min(46, size.width / 14, size.height / 10)
+  const portrait = size.width / size.height < 0.75
+  const fitZoom =
+    Math.min(
+      size.width / (portrait ? 11.8 : 12.3),
+      size.height / (portrait ? 13.5 : 10.3),
+    ) * 0.9
   const renderedFrames = useRef(0)
   // Canvas DOM presence precedes the first scene render / world matrices.
   useFrame(() => {
@@ -297,7 +309,9 @@ function Interior(p: Props) {
       orbit.enableDamping = false
       orbit.reset()
     }
-    camera.position.set(12, 11, 15)
+    camera.position.set(
+      ...((portrait ? [15, 18, 4] : [12, 11, 15]) as [number, number, number]),
+    )
     camera.zoom = fitZoom
     camera.updateProjectionMatrix()
     cameraVelocity.current.set(0, 0, 0)
@@ -403,6 +417,14 @@ function Interior(p: Props) {
       }
       if (active.moved || candidate.rotation !== active.item.rotation)
         current.current.onDrop(candidate)
+      const props = current.current
+      if (
+        props.natural &&
+        !active.moved &&
+        candidate.rotation === active.item.rotation &&
+        active.item.kind === 'lamp'
+      )
+        props.onInteract(active.item.id, { kind: 'lamp' })
       cancel()
     }
     const key = (e: KeyboardEvent) => {
@@ -515,6 +537,10 @@ function Interior(p: Props) {
   function down(e: ThreeEvent<PointerEvent>, shown: Item) {
     if (e.button !== 0 || e.buttons !== 1) return
     if (p.placing) return
+    if (p.natural && p.tool) {
+      e.stopPropagation()
+      return
+    }
     e.stopPropagation()
     const item = p.items.find((i) => i.id === shown.id)!
     if (p.disposal?.binId === item.id) {
@@ -523,12 +549,15 @@ function Interior(p: Props) {
       )
       return
     }
-    if (item.kind === 'bin' && p.mode === 'interact') {
+    if (
+      item.kind === 'bin' &&
+      (p.natural ? p.selectedTrash : p.mode === 'interact')
+    ) {
       p.onBin(item.id)
       return
     }
     p.onSelect(item.id)
-    if (p.mode === 'interact') {
+    if (!p.natural && p.mode === 'interact') {
       if (isSmall(item)) p.onTake(item.id)
       else if (item.kind === 'lamp') p.onInteract(item.id, { kind: 'lamp' })
       else
@@ -592,11 +621,18 @@ function Interior(p: Props) {
         shadow-normalBias={0.04}
       />
       <House walls={p.walls} />
+      <WorkTools
+        tool={p.tool}
+        color={p.paintColor}
+        onTool={p.onTool}
+        onColor={p.onColor}
+        onHint={p.onMessage}
+      />
       <PaintScene
         paint={p.paint}
         enabled={
           p.paintTool &&
-          p.mode === 'interact' &&
+          (p.natural || p.mode === 'interact') &&
           !p.draft &&
           !p.placing &&
           !p.disposal
@@ -612,9 +648,10 @@ function Interior(p: Props) {
         onHint={p.onMessage}
       />
       <DirtScene
+        cancelRef={p.cancelWipe}
         dirt={p.dirt}
         enabled={
-          p.mode === 'interact' &&
+          (p.natural ? p.tool === 'sponge' : p.mode === 'interact') &&
           !p.paintTool &&
           !p.draft &&
           !p.placing &&
@@ -630,7 +667,11 @@ function Interior(p: Props) {
         trash={p.trash}
         items={p.items}
         pending={p.disposal}
-        enabled={p.mode === 'interact' && !p.draft && !p.placing}
+        enabled={
+          (p.natural ? !p.tool : p.mode === 'interact') &&
+          !p.draft &&
+          !p.placing
+        }
         onPick={p.onTrashPick}
         quickEnabled={quickHeld && !p.draft && !p.placing}
         onQuick={p.onQuickClean}
@@ -657,7 +698,7 @@ function Interior(p: Props) {
                 p.selected === item.id && !!validatePlacement(shown, p.items)
               }
               onDown={down}
-              mode={p.mode}
+              mode={p.natural ? 'interact' : p.mode}
               drawerMotion={drawerMotion.current}
               surfaceY={supportHeight(shown, shownItems)}
               binActive={p.disposal?.binId === item.id}
@@ -665,6 +706,7 @@ function Interior(p: Props) {
                 p.binFeedback?.id === item.id ? p.binFeedback.at : undefined
               }
               onInteract={(action) => {
+                if (p.natural && p.tool) return
                 p.onSelect(item.id)
                 p.onInteract(item.id, action)
               }}
@@ -677,7 +719,7 @@ function Interior(p: Props) {
         makeDefault
         enableDamping
         minZoom={Math.min(25, fitZoom * 0.65)}
-        maxZoom={95}
+        maxZoom={Math.max(95, fitZoom * 2.1)}
         minPolarAngle={CAMERA_MIN_POLAR}
         maxPolarAngle={CAMERA_MAX_POLAR}
         screenSpacePanning={false}

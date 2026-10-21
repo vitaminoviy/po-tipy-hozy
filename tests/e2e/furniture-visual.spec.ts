@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './support/legacy-test'
 import { Vector3 } from 'three'
 import { waitForCameraStill } from './support/camera'
 
