@@ -3,13 +3,8 @@ import type { ThreeEvent } from '@react-three/fiber'
 import { Box } from './Furniture'
 import { paintColors, type PaintColor } from './painting'
 export type WorkTool = 'roller' | 'sponge' | null
-export const toolPositions = {
-  roller: [-3.6, -0.14, 4.6],
-  sponge: [-2.4, -0.14, 4.6],
-  cream: [-0.9, -0.035, 4.6],
-  sage: [0.1, -0.035, 4.6],
-  terracotta: [1.1, -0.035, 4.6],
-} as const
+import { workArea, toolPositions } from './workArea'
+export { toolPositions } from './workArea'
 export default function WorkTools({
   tool,
   color,
@@ -43,7 +38,7 @@ export default function WorkTools({
   })
   return (
     <group>
-      <Box p={[-1.25, -0.35, 4.65]} s={[6.6, 0.28, 1.1]} c="#c6bea8" />
+      <Box p={[...workArea.position]} s={[...workArea.size]} c="#c6bea8" />
       {(['roller', 'sponge'] as const).map((id) => (
         <group
           key={id}
@@ -106,7 +101,7 @@ export default function WorkTools({
         </group>
       ))}
       {/* Reserved empty place for a future tool; no inactive picking target. */}
-      <Box p={[-4.25, -0.1975, 4.65]} s={[0.3, 0.025, 0.65]} c="#b4b09b" />
+      <Box p={[-4.18, -0.1975, 4.55]} s={[0.3, 0.025, 0.65]} c="#b4b09b" />
     </group>
   )
 }

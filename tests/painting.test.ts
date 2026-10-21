@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  paintGrid,
   createPaint,
   paintWalls,
   paintColors,
@@ -12,12 +13,16 @@ import {
   wallExit,
 } from '../src/painting'
 import { createHistory, historyReducer } from '../src/history'
-import { MASK_SIZE, cleanFraction } from '../src/wiping'
-// Compact reference face for brush-kernel tests; actual House geometry is tested
-// separately in wall-surfaces.test.ts and browser strokes across full walls.
-const wall = { ...paintWalls[0], w: 2.4, h: 1.3 }
-const line = (mask: Uint8Array, y = 0) =>
-  paintSegment(mask, wall, { x: -1.1, y }, { x: 1.1, y })
+import { cleanFraction } from '../src/wiping'
+const wall = paintWalls[0],
+  grid = paintGrid(wall)
+const line = (mask: Uint8Array, y = 0, face = wall) =>
+  paintSegment(
+    mask,
+    face,
+    { x: -face.w / 2 + 0.08, y },
+    { x: face.w / 2 - 0.08, y },
+  )
 test('stable blank paint masks are independent across both rooms', () => {
   const a = createPaint(),
     b = createPaint()
@@ -26,7 +31,7 @@ test('stable blank paint masks are independent across both rooms', () => {
   assert.notEqual(a[0].mask, a[1].mask)
   assert.equal(paintFraction(a[0].mask), 0)
   assert.equal(a[0].color, null)
-  assert.equal(a[0].mask.length, MASK_SIZE ** 2)
+  assert.equal(a[0].mask.length, grid.length)
   assert.equal(new Set(paintWalls.map((w) => w.room)).size, 2)
 })
 test('palette has exactly three requested colors; first changed stroke locks only its wall', () => {
@@ -49,9 +54,12 @@ test('one stroke paints only a narrow band, preserves the rest and has real alph
   const f = paintFraction(mask)
   assert.ok(f > 0.05 && f < 0.2)
   assert.equal(mask[0], 0)
-  assert.equal(mask[48 * 96 + 48], 255)
+  assert.equal(
+    mask[Math.floor(grid.height / 2) * grid.width + Math.floor(grid.width / 2)],
+    255,
+  )
   assert.ok(mask.some((v) => v > 0 && v < 255))
-  assert.equal(f, mask.reduce((sum, v) => sum + v, 0) / (255 * 96 * 96))
+  assert.equal(f, mask.reduce((sum, v) => sum + v, 0) / (255 * grid.length))
 })
 test('repeat and reversed strokes are idempotent even at feathered edges', () => {
   const mask = createPaint()[0].mask
@@ -59,7 +67,12 @@ test('repeat and reversed strokes are idempotent even at feathered edges', () =>
   const before = mask.slice(),
     f = paintFraction(mask)
   assert.equal(line(mask), false)
-  paintSegment(mask, wall, { x: 1.1, y: 0 }, { x: -1.1, y: 0 })
+  paintSegment(
+    mask,
+    wall,
+    { x: wall.w / 2 - 0.08, y: 0 },
+    { x: -wall.w / 2 + 0.08, y: 0 },
+  )
   assert.deepEqual(mask, before)
   assert.equal(paintFraction(mask), f)
 })
@@ -84,9 +97,9 @@ test('fast diagonal swept stroke matches subdivided input, without gaps along th
     )
   assert.ok(Math.abs(paintFraction(a) - paintFraction(b)) < 0.0001)
   for (let n = 10; n < 80; n++) {
-    const col = Math.floor(((-1 + n / 40) / wall.w + 0.5) * 96),
-      row = Math.floor((0.5 - (-0.5 + n / 80) / wall.h) * 96)
-    assert.equal(a[row * 96 + col], 255)
+    const col = Math.floor(((-1 + n / 40) / wall.w + 0.5) * grid.width),
+      row = Math.floor((0.5 - (-0.5 + n / 80) / wall.h) * grid.height)
+    assert.equal(a[row * grid.width + col], 255)
   }
 })
 test('outside endpoints are rejected; disconnected re-entry cannot bridge through the wall', () => {
@@ -100,13 +113,19 @@ test('wall local coordinates use the actual surface basis and consistent top-row
   assert.ok(Math.abs(local.x - 0.6) < 1e-10 && Math.abs(local.y - 0.4) < 1e-10)
   const mask = createPaint()[0].mask
   line(mask, 0.45)
-  assert.ok(mask.slice(0, 96 * 30).some((v) => v > 0))
-  assert.ok(mask.slice(96 * 60).every((v) => v === 0))
+  assert.ok(
+    mask
+      .slice(0, grid.width * Math.floor(grid.height * 0.45))
+      .some((v) => v > 0),
+  )
+  assert.ok(
+    mask.slice(grid.width * Math.ceil(grid.height * 0.6)).every((v) => v === 0),
+  )
 })
 test('coverage reaches threshold then fills remaining pixels once on gesture commit', () => {
   const before = createPaint()[0],
     mask = before.mask.slice()
-  for (let y = -0.64; y <= 0.65; y += 0.1) line(mask, y)
+  for (let y = -wall.h / 2 + 0.005; y <= wall.h / 2; y += 0.1) line(mask, y)
   assert.ok(paintComplete(mask))
   const next = finishPaint(before, 'terracotta', mask)!
   assert.equal(paintFraction(next.mask), 1)
@@ -166,7 +185,7 @@ test('two walls can keep different colors; canceling a private gesture cannot mu
     [1, 'cream'],
   ] as const) {
     const mask = h.paint[n].mask.slice()
-    line(mask)
+    line(mask, 0, paintWalls[n])
     h = historyReducer(h, { type: 'paint', id: h.paint[n].id, color, mask })
   }
   const cancelled = h.paint[0].mask.slice()
@@ -237,11 +256,15 @@ test('undo to a blank wall unlocks its color and a new color discards the old re
 test('fast exits clip to the visible rectangle edge without painting outside or reconnecting later input', () => {
   const from = { x: 0, y: 0 },
     exit = wallExit(wall, from, { x: 5, y: 0 })
-  assert.deepEqual(exit, { x: wall.w / 2, y: 0 })
+  assert.ok(Math.abs(exit.x - wall.w / 2) < 1e-10)
+  assert.equal(exit.y, 0)
   const mask = createPaint()[0].mask
   assert.ok(paintSegment(mask, wall, from, exit))
-  assert.equal(mask[48 * 96 + 95], 255)
-  assert.equal(mask[48 * 96], 0)
+  assert.equal(
+    mask[Math.floor(grid.height / 2) * grid.width + grid.width - 1],
+    255,
+  )
+  assert.equal(mask[Math.floor(grid.height / 2) * grid.width], 0)
   assert.equal(mask[0], 0)
   const corner = wallExit(wall, from, { x: 5, y: 5 })
   assert.ok(Math.abs(corner.y - wall.h / 2) < 1e-10)

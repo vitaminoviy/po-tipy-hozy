@@ -1,5 +1,4 @@
 import type { Room } from './cleaning'
-import { MASK_SIZE } from './wiping'
 
 export const PAINT_THRESHOLD = 0.95
 export const paintColors = {
@@ -127,11 +126,32 @@ export type PaintState = {
 }
 export const ROLLER_WIDTH = 0.34
 export const ROLLER_HEIGHT = 0.18
+// Uniform world-space density, capped for browser/mobile texture budgets.
+export const PAINT_PIXELS_PER_METRE = 64
+const grids = new WeakMap<
+  PaintWall,
+  { width: number; height: number; length: number }
+>()
+export function paintGrid(wall: PaintWall) {
+  let grid = grids.get(wall)
+  if (!grid) {
+    const dimension = (m: number) =>
+      Math.max(
+        32,
+        Math.min(512, Math.ceil((m * PAINT_PIXELS_PER_METRE) / 16) * 16),
+      )
+    const width = dimension(wall.w),
+      height = dimension(wall.h)
+    grid = Object.freeze({ width, height, length: width * height })
+    grids.set(wall, grid)
+  }
+  return grid
+}
 export const createPaint = (): PaintState[] =>
-  paintWalls.map(({ id }) => ({
-    id,
+  paintWalls.map((wall) => ({
+    id: wall.id,
     color: null,
-    mask: new Uint8Array(MASK_SIZE ** 2),
+    mask: new Uint8Array(paintGrid(wall).length),
   }))
 export const onWall = (wall: PaintWall, p: PaintPoint) =>
   Math.abs(p.x) <= wall.w / 2 + 1e-9 &&
@@ -139,25 +159,42 @@ export const onWall = (wall: PaintWall, p: PaintPoint) =>
   !wall.holes?.some(
     (h) => Math.abs(p.x - h.x) <= h.w / 2 && Math.abs(p.y - h.y) <= h.h / 2,
   )
-export const pixelPoint = (wall: PaintWall, i: number): PaintPoint => ({
-  x: (((i % MASK_SIZE) + 0.5) / MASK_SIZE - 0.5) * wall.w,
-  y: (0.5 - (Math.floor(i / MASK_SIZE) + 0.5) / MASK_SIZE) * wall.h,
-})
+export const pixelPoint = (wall: PaintWall, i: number): PaintPoint => {
+  const g = paintGrid(wall)
+  return {
+    x: (((i % g.width) + 0.5) / g.width - 0.5) * wall.w,
+    y: (0.5 - (Math.floor(i / g.width) + 0.5) / g.height) * wall.h,
+  }
+}
+const areas = new WeakMap<PaintWall, { allowed: Uint8Array; count: number }>()
+function paintable(wall: PaintWall) {
+  let area = areas.get(wall)
+  if (!area) {
+    const allowed = new Uint8Array(paintGrid(wall).length)
+    let count = 0
+    for (let i = 0; i < allowed.length; i++)
+      if (onWall(wall, pixelPoint(wall, i))) {
+        allowed[i] = 1
+        count++
+      }
+    area = { allowed, count }
+    areas.set(wall, area)
+  }
+  return area
+}
 export const paintFraction = (mask: Uint8Array, wall?: PaintWall) => {
-  let area = 0,
-    covered = 0
-  for (let i = 0; i < mask.length; i++)
-    if (!wall || onWall(wall, pixelPoint(wall, i))) {
-      area++
-      covered += mask[i]
-    }
-  return area ? covered / (255 * area) : 0
+  if (!wall) return mask.reduce((sum, v) => sum + v, 0) / (255 * mask.length)
+  const { allowed, count } = paintable(wall)
+  if (mask.length !== allowed.length) return 0
+  let sum = 0
+  for (let i = 0; i < mask.length; i++) if (allowed[i]) sum += mask[i]
+  return count ? sum / (255 * count) : 0
 }
 export const paintComplete = (mask: Uint8Array, wall?: PaintWall) =>
   paintFraction(mask, wall) >= PAINT_THRESHOLD
 export function fillPaint(mask: Uint8Array, wall: PaintWall) {
-  for (let i = 0; i < mask.length; i++)
-    mask[i] = onWall(wall, pixelPoint(wall, i)) ? 255 : 0
+  const { allowed } = paintable(wall)
+  for (let i = 0; i < mask.length; i++) mask[i] = allowed[i] ? 255 : 0
 }
 export const wallLocal = (
   wall: PaintWall,
@@ -177,10 +214,8 @@ export const paintedArea = (states: PaintState[], room: Room) => {
   let area = 0,
     covered = 0
   for (const wall of paintWalls.filter((w) => w.room === room)) {
-    const count = Array.from({ length: MASK_SIZE ** 2 }, (_, i) =>
-      onWall(wall, pixelPoint(wall, i)) ? 1 : 0,
-    ).reduce<number>((a, b) => a + b, 0)
-    const size = (wall.w * wall.h * count) / MASK_SIZE ** 2
+    const size =
+      (wall.w * wall.h * paintable(wall).count) / paintGrid(wall).length
     area += size
     const state = states.find((s) => s.id === wall.id)
     if (state) covered += size * paintFraction(state.mask, wall)
@@ -244,23 +279,43 @@ export function paintSegment(
     dy = (to.y - from.y) / ry
   const length2 = dx * dx + dy * dy
   if (length2 < 1e-8) return false
+  const grid = paintGrid(wall),
+    { allowed } = paintable(wall)
+  if (mask.length !== grid.length) return false
+  const minCol = Math.max(
+    0,
+    Math.floor(((Math.min(from.x, to.x) - rx) / wall.w + 0.5) * grid.width),
+  )
+  const maxCol = Math.min(
+    grid.width - 1,
+    Math.floor(((Math.max(from.x, to.x) + rx) / wall.w + 0.5) * grid.width),
+  )
+  const minRow = Math.max(
+    0,
+    Math.floor((0.5 - (Math.max(from.y, to.y) + ry) / wall.h) * grid.height),
+  )
+  const maxRow = Math.min(
+    grid.height - 1,
+    Math.floor((0.5 - (Math.min(from.y, to.y) - ry) / wall.h) * grid.height),
+  )
   let changed = false
-  for (let row = 0; row < MASK_SIZE; row++) {
-    const y = (0.5 - (row + 0.5) / MASK_SIZE) * wall.h
+  for (let row = minRow; row <= maxRow; row++) {
+    const y = (0.5 - (row + 0.5) / grid.height) * wall.h
     if (y < Math.min(from.y, to.y) - ry || y > Math.max(from.y, to.y) + ry)
       continue
-    for (let col = 0; col < MASK_SIZE; col++) {
-      const x = ((col + 0.5) / MASK_SIZE - 0.5) * wall.w
-      if (!onWall(wall, { x, y })) continue
+    for (let col = minCol; col <= maxCol; col++) {
+      const x = ((col + 0.5) / grid.width - 0.5) * wall.w
+      if (!allowed[row * grid.width + col]) continue
       const px = (x - from.x) / rx,
         py = (y - from.y) / ry
       const t = Math.max(0, Math.min(1, (px * dx + py * dy) / length2))
       const distance = Math.hypot(px - dx * t, py - dy * t)
       if (distance >= 1) continue
-      const i = row * MASK_SIZE + col
+      const i = row * grid.width + col
+      const edge = Math.min(1, (1 - distance) / 0.2)
       const next = Math.max(
         mask[i],
-        Math.round(255 * Math.min(1, (1 - distance) * 5)),
+        Math.round(255 * edge * edge * (3 - 2 * edge)),
       )
       if (next !== mask[i]) {
         mask[i] = next
@@ -280,12 +335,9 @@ export function finishPaint(
   if (!wall) return null
   if (
     !(color in paintColors) ||
-    mask.length !== MASK_SIZE ** 2 ||
+    mask.length !== paintGrid(wall).length ||
     (before.color && before.color !== color) ||
-    paintComplete(
-      before.mask,
-      paintWalls.find((w) => w.id === before.id),
-    )
+    paintComplete(before.mask, wall)
   )
     return null
   if (

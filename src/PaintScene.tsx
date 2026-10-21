@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import {
   CanvasTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -9,8 +11,8 @@ import {
   Vector2,
 } from 'three'
 import { isEditing } from './controls'
-import { MASK_SIZE } from './wiping'
 import {
+  paintGrid,
   fillPaint,
   paintColors,
   paintWalls,
@@ -51,26 +53,28 @@ function WallLayer({
   enabled: boolean
   down: (e: ThreeEvent<PointerEvent>, wall: PaintWall) => void
 }) {
+  const { gl } = useThree()
   const material = useRef<MeshStandardMaterial>(null)
   const resources = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = canvas.height = MASK_SIZE
+    const { width, height } = paintGrid(wall)
+    canvas.width = width
+    canvas.height = height
     const context = canvas.getContext('2d')!
-    return {
-      context,
-      pixels: context.createImageData(MASK_SIZE, MASK_SIZE),
-      texture: new CanvasTexture(canvas),
-    }
-  }, [])
+    const pixels = context.createImageData(width, height)
+    pixels.data.fill(255)
+    for (let i = 3; i < pixels.data.length; i += 4) pixels.data[i] = 0
+    const texture = new CanvasTexture(canvas)
+    texture.magFilter = LinearFilter
+    texture.minFilter = LinearMipmapLinearFilter
+    texture.anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy())
+    return { context, pixels, texture }
+  }, [wall, gl])
   useEffect(() => () => resources.texture.dispose(), [resources])
   const last = useRef<Uint8Array | null>(null)
   useFrame(() => {
     if (!view.changed && last.current === view.mask) return
     for (let i = 0; i < view.mask.length; i++) {
-      resources.pixels.data[i * 4] =
-        resources.pixels.data[i * 4 + 1] =
-        resources.pixels.data[i * 4 + 2] =
-          255
       resources.pixels.data[i * 4 + 3] = view.mask[i]
     }
     resources.context.putImageData(resources.pixels, 0, 0)
@@ -141,11 +145,13 @@ export default function PaintScene(p: Props) {
   useEffect(() => {
     for (const state of p.paint) {
       if (gesture.current?.wall.id === state.id) continue
-      Object.assign(views.get(state.id)!, {
-        mask: state.mask,
-        color: state.color,
-        changed: true,
-      })
+      const view = views.get(state.id)!
+      if (view.mask !== state.mask || view.color !== state.color)
+        Object.assign(view, {
+          mask: state.mask,
+          color: state.color,
+          changed: true,
+        })
     }
   }, [p.paint, views])
   useEffect(() => {

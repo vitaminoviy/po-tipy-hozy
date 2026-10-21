@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  paintGrid,
   paintWalls,
   createPaint,
   wallExit,
@@ -14,7 +15,6 @@ import {
   finishPaint,
   pixelPoint,
 } from '../src/painting'
-import { MASK_SIZE } from '../src/wiping'
 test('all existing inner wall faces have stable IDs and reversible local bases', () => {
   assert.equal(paintWalls.length, 12)
   assert.equal(new Set(paintWalls.map((w) => w.id)).size, 12)
@@ -28,7 +28,7 @@ test('all existing inner wall faces have stable IDs and reversible local bases',
 test('rear windows, frames and sills are excluded both from brush pixels and final completion', () => {
   for (const w of paintWalls.filter((w) => w.id.endsWith('rear'))) {
     assert.equal(onWall(w, { x: 0, y: 0.17 }), false)
-    const mask = new Uint8Array(MASK_SIZE ** 2)
+    const mask = new Uint8Array(paintGrid(w).length)
     paintSegment(mask, w, { x: -2, y: 0.17 }, { x: 2, y: 0.17 })
     for (let i = 0; i < mask.length; i++)
       if (!onWall(w, pixelPoint(w, i))) assert.equal(mask[i], 0)
