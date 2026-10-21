@@ -1,4 +1,11 @@
 import {
+  floorMaterials,
+  floorProgress,
+  finishFloor,
+  type FloorMaterial,
+} from './flooring'
+import type { Room } from './cleaning'
+import {
   useCallback,
   useEffect,
   useState,
@@ -108,6 +115,11 @@ export default function App() {
   const [tool, setTool] = useState<WorkTool>(null)
   const [natural, setNatural] = useState(true)
   const [note, setNote] = useState(false)
+  const cancelFloor = useRef<() => void>(() => {})
+  const [floorConflict, setFloorConflict] = useState<{
+    room: Room
+    material: FloorMaterial
+  } | null>(null)
   const cancelWipe = useRef<() => void>(() => {})
   const [paintColor, setPaintColor] = useState<PaintColor>('sage')
   const cancelPaint = useRef<() => void>(() => {})
@@ -235,8 +247,10 @@ export default function App() {
     setCancelToken((n) => n + 1)
   }, [setDraft])
   const switchMode = useCallback(() => {
+    setFloorConflict(null)
     cancelPaint.current()
     cancelWipe.current()
+    cancelFloor.current()
     setNatural(false)
     setTool(null)
     setPaintTool(false)
@@ -300,8 +314,10 @@ export default function App() {
   )
   const travel = useCallback(
     (type: 'undo' | 'redo') => {
+      setFloorConflict(null)
       cancelPaint.current()
       cancelWipe.current()
+      cancelFloor.current()
       cancelTransfer()
       cancelCleaning()
       dispatch({ type })
@@ -592,8 +608,10 @@ export default function App() {
         }
       }
       if (e.key === 'Escape') {
+        setFloorConflict(null)
         cancelPaint.current()
         cancelWipe.current()
+        cancelFloor.current()
         setTool(null)
         setPaintTool(false)
         setNatural(true)
@@ -625,9 +643,11 @@ export default function App() {
   const chooseTool = (next: WorkTool) => {
     cancelPaint.current()
     cancelWipe.current()
+    cancelFloor.current()
     cancelTransfer()
     cancelCleaning()
     setNatural(true)
+    setFloorConflict(null)
     setTool(next)
     if (paintOutput.current) paintOutput.current.textContent = ''
     if (paintRoomOutput.current) paintRoomOutput.current.textContent = ''
@@ -639,12 +659,16 @@ export default function App() {
         ? 'Выберите баночку краски и ведите валиком по стене'
         : next === 'sponge'
           ? 'Удерживайте ЛКМ и протирайте грязь на полу'
-          : 'Выберите предмет или инструмент возле дома',
+          : next && next in floorMaterials
+            ? 'Удерживайте ЛКМ и ведите по полу — укладываются целые элементы'
+            : 'Выберите предмет или инструмент возле дома',
     )
   }
   const stopGesture = () => {
+    setFloorConflict(null)
     cancelPaint.current()
     cancelWipe.current()
+    cancelFloor.current()
     cancelTransfer()
   }
   return (
@@ -655,6 +679,30 @@ export default function App() {
           style={{ pointerEvents: note ? 'none' : undefined }}
         >
           <Scene
+            floors={history.floors}
+            cancelFloor={cancelFloor}
+            onFloorBegin={() => {
+              cancelCleaning()
+              setSelected(null)
+              setFloorConflict(null)
+              setMessage('Ведите по полу — укладываются целые доски или плитки')
+            }}
+            onFloorCommit={(room, material, laid, visible) => {
+              const before = history.floors.find((f) => f.room === room)!
+              const next = finishFloor(before, material, laid, items, visible)
+              dispatch({ type: 'floor', room, material, laid, visible })
+              setMessage(
+                next?.complete
+                  ? 'Пол обновлён!'
+                  : 'Покрытие уложено. Продолжайте работу; Ctrl+Z — отменить жест.',
+              )
+            }}
+            onFloorConflict={(room, material) => {
+              setFloorConflict({ room, material })
+              setMessage(
+                'В комнате уже выбрано другое покрытие. Отмените укладку через Ctrl+Z или подтвердите сброс.',
+              )
+            }}
             tool={tool}
             natural={natural}
             selectedTrash={!!selectedTrash}
@@ -785,6 +833,20 @@ export default function App() {
                 {isClean(dirt.mask) ? '☑' : '☐'} Отмыть пол{' '}
                 <small>{Math.floor(cleanFraction(dirt.mask) * 100)}%</small>
               </p>
+              <p data-testid={'task-replace-' + room}>
+                {history.floors.find((f) => f.room === room)!.complete
+                  ? '☑'
+                  : '☐'}{' '}
+                Заменить напольное покрытие{' '}
+                <small>
+                  {Math.floor(
+                    floorProgress(
+                      history.floors.find((f) => f.room === room)!,
+                    ) * 100,
+                  )}
+                  %
+                </small>
+              </p>
               <p data-testid={'task-paint-' + room}>
                 {painted >= 0.999 ? '☑' : '☐'} Покрасить стены{' '}
                 <small>{Math.floor(painted * 100)}%</small>
@@ -831,6 +893,7 @@ export default function App() {
           if (e.currentTarget.open) {
             cancelPaint.current()
             cancelWipe.current()
+            cancelFloor.current()
           }
         }}
       >
@@ -839,9 +902,7 @@ export default function App() {
           <button onClick={() => setHelp(!help)} aria-expanded={help}>
             Управление
           </button>
-          <p className="menu-version">
-            Prototype 0.6.3 · Дополнительные команды
-          </p>
+          <p className="menu-version">Prototype 0.7 · Дополнительные команды</p>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">
               <button
@@ -870,6 +931,7 @@ export default function App() {
                     cancelTransfer()
                     cancelCleaning()
                     cancelWipe.current()
+                    cancelFloor.current()
                     setTool(!paintTool ? 'roller' : null)
                     setPaintTool(!paintTool)
                     if (!paintTool) setWalls(true)
@@ -1188,8 +1250,40 @@ export default function App() {
           </div>
         </div>
       </details>
-      <div className="tool-context" hidden={!tool}>
-        <span>{tool === 'roller' ? 'Валик' : 'Губка'} · Esc — убрать</span>
+      {floorConflict && (
+        <div className="tool-context" role="alert">
+          <span>
+            {roomNames[floorConflict.room]}: сбросить текущее покрытие? Это
+            можно отменить.
+          </span>
+          <button
+            onClick={() => {
+              cancelFloor.current()
+              dispatch({ type: 'floor-reset', room: floorConflict.room })
+              setFloorConflict(null)
+              setMessage(
+                'Покрытие сброшено; начните укладку выбранного материала. Ctrl+Z — вернуть.',
+              )
+            }}
+          >
+            Сбросить укладку
+          </button>
+          <button onClick={() => setFloorConflict(null)}>
+            Оставить покрытие
+          </button>
+        </div>
+      )}
+      <div className="tool-context" hidden={!tool || !!floorConflict}>
+        <span>
+          {tool === 'roller'
+            ? 'Валик'
+            : tool === 'sponge'
+              ? 'Губка'
+              : tool
+                ? floorMaterials[tool].name
+                : ''}{' '}
+          · Esc — убрать
+        </span>
         <span ref={paintRoomOutput} />
         <output ref={paintOutput} data-testid="active-tool-progress" />
       </div>

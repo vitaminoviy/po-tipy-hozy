@@ -1,3 +1,6 @@
+import FloorScene from './FloorScene'
+import { floorMaterials, type FloorState, type FloorMaterial } from './flooring'
+import type { Room } from './cleaning'
 import {
   useEffect,
   useRef,
@@ -87,6 +90,16 @@ function StoredContents({
 }
 
 type Props = {
+  floors: FloorState[]
+  cancelFloor: MutableRefObject<() => void>
+  onFloorBegin: () => void
+  onFloorCommit: (
+    room: Room,
+    material: FloorMaterial,
+    laid: Uint8Array,
+    visible: Float32Array,
+  ) => void
+  onFloorConflict: (room: Room, material: FloorMaterial) => void
   tool: WorkTool
   natural: boolean
   selectedTrash: boolean
@@ -160,6 +173,7 @@ function Interior(p: Props) {
   const keys = useRef(new Set<string>())
   const wiping = useRef(false)
   const painting = useRef(false)
+  const laying = useRef(false)
   const [quickHeld, setQuickHeld] = useState(false)
   useEffect(() => {
     if (!p.disposal) delete gl.domElement.dataset.flight
@@ -190,7 +204,7 @@ function Interior(p: Props) {
     const fast = keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
     // Only a held left-button drag pauses keyboard camera travel. A selected
     // item or click-to-place preview never takes ownership of WASD.
-    if (drag.current || wiping.current || painting.current) {
+    if (drag.current || wiping.current || painting.current || laying.current) {
       cameraVelocity.current.set(0, 0, 0)
     } else {
       const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
@@ -204,7 +218,8 @@ function Interior(p: Props) {
       orbit.target.add(shift)
     }
     orbit.update()
-    orbit.enabled = !drag.current && !wiping.current && !painting.current
+    orbit.enabled =
+      !drag.current && !wiping.current && !painting.current && !laying.current
     // Clamp after damping as well: residual mouse pan must not escape bounds.
     const bounded = orbit.target
       .clone()
@@ -628,6 +643,28 @@ function Interior(p: Props) {
         onColor={p.onColor}
         onHint={p.onMessage}
       />
+      <FloorScene
+        walls={p.walls}
+        occlusionKey={p.trash.map((t) => t.state).join(',')}
+        floors={p.floors}
+        items={p.items}
+        material={
+          p.tool && p.tool in floorMaterials ? (p.tool as FloorMaterial) : null
+        }
+        enabled={
+          !!p.tool &&
+          p.tool in floorMaterials &&
+          !p.draft &&
+          !p.placing &&
+          !p.disposal
+        }
+        active={laying}
+        cancelRef={p.cancelFloor}
+        cancelToken={p.cancelToken}
+        onBegin={p.onFloorBegin}
+        onCommit={p.onFloorCommit}
+        onConflict={p.onFloorConflict}
+      />
       <PaintScene
         paint={p.paint}
         enabled={
@@ -653,6 +690,7 @@ function Interior(p: Props) {
         enabled={
           (p.natural ? p.tool === 'sponge' : p.mode === 'interact') &&
           !p.paintTool &&
+          !(p.tool && p.tool in floorMaterials) &&
           !p.draft &&
           !p.placing &&
           !p.disposal

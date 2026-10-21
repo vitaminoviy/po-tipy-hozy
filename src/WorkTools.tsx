@@ -2,8 +2,14 @@ import { useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import { Box } from './Furniture'
 import { paintColors, type PaintColor } from './painting'
-export type WorkTool = 'roller' | 'sponge' | null
-import { workArea, toolPositions } from './workArea'
+import { floorMaterials, type FloorMaterial } from './flooring'
+export type WorkTool = 'roller' | 'sponge' | FloorMaterial | null
+import {
+  workArea,
+  toolPositions,
+  floorSampleArea,
+  floorSamplePositions,
+} from './workArea'
 export { toolPositions } from './workArea'
 export default function WorkTools({
   tool,
@@ -97,6 +103,52 @@ export default function WorkTools({
                 color === id ? '#66795d' : hover === id ? '#e9dec9' : '#c6bea8'
               }
             />
+          </mesh>
+        </group>
+      ))}
+      <Box
+        p={[...floorSampleArea.position]}
+        s={[...floorSampleArea.size]}
+        c="#c6bea8"
+      />
+      {(Object.keys(floorMaterials) as FloorMaterial[]).map((id) => (
+        <group
+          key={id}
+          position={[...floorSamplePositions[id]]}
+          userData={{ floorSample: id }}
+          {...events(id, floorMaterials[id].name, () =>
+            onTool(tool === id ? null : id),
+          )}
+        >
+          <Box
+            p={[0, -0.03, 0]}
+            s={[0.8, 0.08, 0.4]}
+            c={tool === id ? '#66795d' : hover === id ? '#e9dec9' : '#b4b09b'}
+          />
+          {Array.from({ length: id === 'tile' ? 4 : 3 }, (_, i) =>
+            id === 'tile' ? (
+              <Box
+                key={i}
+                p={[
+                  ((i % 2) - 0.5) * 0.34,
+                  0.025,
+                  (Math.floor(i / 2) - 0.5) * 0.15,
+                ]}
+                s={[0.325, 0.025, 0.14]}
+                c={floorMaterials[id].colors[i % 3]}
+              />
+            ) : (
+              <Box
+                key={i}
+                p={[0, 0.025, (i - 1) * 0.1]}
+                s={[0.7, 0.025, 0.09]}
+                c={floorMaterials[id].colors[i % 3]}
+              />
+            ),
+          )}
+          <mesh position={[0, 0.05, 0]}>
+            <boxGeometry args={[0.9, 0.25, 0.48]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
         </group>
       ))}

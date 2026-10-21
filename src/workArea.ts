@@ -18,3 +18,15 @@ export const toolFootprints = {
   sage: { left: 0.31, right: 0.31, back: 0.31, front: 0.31 },
   terracotta: { left: 0.31, right: 0.31, back: 0.31, front: 0.31 },
 } as const
+
+export const floorSampleArea = {
+  position: [4.25, -0.35, 4.9] as const,
+  size: [1.3, 0.28, 1.9] as const,
+  safeInset: 0.2,
+}
+export const floorSamplePositions = {
+  oak: [4.25, -0.14, 4.35],
+  walnut: [4.25, -0.14, 4.9],
+  tile: [4.25, -0.14, 5.45],
+} as const
+export const floorSampleFootprint = { w: 0.8, d: 0.4 }

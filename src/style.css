@@ -347,3 +347,10 @@ body,
 .menu-content [aria-pressed='true'] {
   border-color: #8ca684;
 }
+
+.tool-context[role='alert'] {
+  pointer-events: auto;
+  white-space: normal;
+  flex-wrap: wrap;
+  z-index: 4;
+}

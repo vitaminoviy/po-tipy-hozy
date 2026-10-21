@@ -1,4 +1,11 @@
 import {
+  createFloors,
+  finishFloor,
+  type FloorState,
+  type FloorMaterial,
+} from './flooring'
+import type { Room } from './cleaning'
+import {
   initialItems,
   validatePlacement,
   drawerSpecs,
@@ -29,6 +36,7 @@ type Snapshot = {
   items: Item[]
   trash: Trash[]
   dirt: DirtState[]
+  floors: FloorState[]
   paint: PaintState[]
 }
 export type History = {
@@ -36,10 +44,19 @@ export type History = {
   present: Item[]
   trash: Trash[]
   dirt: DirtState[]
+  floors: FloorState[]
   paint: PaintState[]
   future: Snapshot[]
 }
 export type Action =
+  | {
+      type: 'floor'
+      room: Room
+      material: FloorMaterial
+      laid: Uint8Array
+      visible?: Float32Array
+    }
+  | { type: 'floor-reset'; room: Room }
   | { type: 'paint'; id: string; color: PaintColor; mask: Uint8Array }
   | { type: 'wipe'; id: string; mask: Uint8Array }
   | { type: 'change'; item: Item }
@@ -64,6 +81,7 @@ export function createHistory(
     trash: trash.map((t) => ({ ...t })),
     dirt: createDirt(),
     paint: createPaint(),
+    floors: createFloors(),
   }
 }
 export function drawerOpeningError(item: Item, items: Item[]): string | null {
@@ -83,7 +101,31 @@ export function historyReducer(state: History, action: Action): History {
     trash: clearTrashSelection(state.trash),
     dirt: state.dirt,
     paint: state.paint,
+    floors: state.floors,
   })
+  if (action.type === 'floor' || action.type === 'floor-reset') {
+    const before = state.floors.find((f) => f.room === action.room)
+    if (!before) return state
+    const next =
+      action.type === 'floor-reset'
+        ? before.material
+          ? createFloors().find((f) => f.room === action.room)!
+          : null
+        : finishFloor(
+            before,
+            action.material,
+            action.laid,
+            state.present,
+            action.visible,
+          )
+    if (!next) return state
+    return {
+      ...state,
+      floors: state.floors.map((f) => (f.room === next.room ? next : f)),
+      past: [...state.past, snapshot()].slice(-100),
+      future: [],
+    }
+  }
   if (action.type === 'paint') {
     const before = state.paint.find((w) => w.id === action.id)
     const next = before && finishPaint(before, action.color, action.mask)
@@ -152,6 +194,7 @@ export function historyReducer(state: History, action: Action): History {
       trash: state.past.at(-1)!.trash,
       dirt: state.past.at(-1)!.dirt,
       paint: state.past.at(-1)!.paint,
+      floors: state.past.at(-1)!.floors,
       future: [snapshot(), ...state.future],
     }
   }
@@ -163,6 +206,7 @@ export function historyReducer(state: History, action: Action): History {
       trash: state.future[0].trash,
       dirt: state.future[0].dirt,
       paint: state.future[0].paint,
+      floors: state.future[0].floors,
       future: state.future.slice(1),
     }
   }
@@ -206,6 +250,7 @@ export function historyReducer(state: History, action: Action): History {
     trash: clearTrashSelection(state.trash),
     dirt: state.dirt,
     paint: state.paint,
+    floors: state.floors,
     future: [],
   }
 }
