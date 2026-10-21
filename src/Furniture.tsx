@@ -17,7 +17,7 @@ import {
   rugCenterY,
   RUG_THICKNESS,
 } from './grounding'
-import { catalog, footprint, drawerSpecs } from './placement'
+import { catalog, drawerSpecs } from './placement'
 import { approach, type Interaction, type Mode } from './history'
 
 export function Box({
@@ -347,7 +347,7 @@ function PlacementMarker({
   item: WorldItem
   invalid?: boolean
 }) {
-  const [w, d] = footprint(item),
+  const [w, d] = catalog[item.kind].size,
     circle = catalog[item.kind].shape === 'circle'
   const color = invalid ? '#dc4938' : '#218c53'
   const frame = useMemo(() => {
@@ -373,6 +373,7 @@ function PlacementMarker({
   return (
     <group
       name="placement-marker"
+      rotation={[0, (item.rotation * Math.PI) / 2, 0]}
       position={[
         item.x,
         item.y +

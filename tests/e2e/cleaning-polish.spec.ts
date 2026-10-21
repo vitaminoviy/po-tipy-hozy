@@ -1,3 +1,4 @@
+import { quarterTurn, buttonQuarterTurn } from './support/rotation'
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 import {
@@ -108,7 +109,7 @@ test('both bins drag with the standard preview, remain in their room and keep ro
     const original = await page.getByTestId('pose').textContent()
     await drag(page, [bin.x, 0.3, bin.z], [x, 0.3, 0])
     await expect(page.locator('footer .invalid')).toHaveCount(0)
-    await page.keyboard.press('r')
+    await quarterTurn(page, 1)
     await page.mouse.up()
     await expect(page.getByTestId('pose')).toHaveText(
       `X ${x.toFixed(2)} · Z 0.00 · 90°`,

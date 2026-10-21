@@ -1,3 +1,4 @@
+import { quarterTurn, buttonQuarterTurn } from './support/rotation'
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 
@@ -40,7 +41,7 @@ test('chair keeps its pose on rug and bare floor, rug moves independently, low c
   await place(page, 'Мягкое кресло', -2.5, 1)
   await expect(page.getByTestId('pose')).toHaveText('X -2.50 · Z 1.00 · 90°')
   await page.getByRole('button', { name: 'Переместить', exact: true }).click()
-  await page.keyboard.press('r')
+  await quarterTurn(page, 1)
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('pose')).toHaveText('X -2.50 · Z 1.00 · 180°')
   await page.screenshot({ path: 'artifacts/grounding-chair-rug.png' })

@@ -1,3 +1,4 @@
+import { quarterTurn, buttonQuarterTurn } from './support/rotation'
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 import { waitForCameraStill } from './support/camera'
@@ -242,8 +243,8 @@ test('E interacts in both modes, Q/R are placement-only and typing suppresses ac
   await page.keyboard.press('Tab')
   await select(page, 'Журнальный стол')
   const tablePose = await pose(page).textContent()
-  await page.keyboard.press('q')
-  await page.keyboard.press('r')
+  await quarterTurn(page, -1)
+  await quarterTurn(page, 1)
   await page.keyboard.press('e')
   await expect(pose(page)).toHaveText(tablePose!)
   await select(page, 'Книга')
@@ -252,9 +253,9 @@ test('E interacts in both modes, Q/R are placement-only and typing suppresses ac
   const bookPose = await pose(page).textContent()
   await page.keyboard.press('e')
   await expect(pose(page)).toHaveText(bookPose!)
-  await page.keyboard.press('r')
+  await quarterTurn(page, 1)
   await expect(pose(page)).toContainText('90°')
-  await page.keyboard.press('q')
+  await quarterTurn(page, -1)
   await expect(pose(page)).toHaveText(bookPose!)
   await page.keyboard.press('Escape')
   await select(page, 'Торшер')
@@ -305,11 +306,11 @@ for (const [name, action] of [
       await expect(
         page.getByRole('button', { name: 'Отменить действие', exact: true }),
       ).toBeDisabled()
-      await page.keyboard.press('q')
+      await quarterTurn(page, -1)
       await expect(pose(page)).toContainText('270°')
-      await page.keyboard.press('r')
+      await quarterTurn(page, 1)
       await expect(pose(page)).toHaveText(initial!)
-      await page.keyboard.press('r')
+      await quarterTurn(page, 1)
       const rotated = await pose(page).textContent()
       await page.keyboard.press('Enter')
       await page.keyboard.press('Control+z')
@@ -320,7 +321,7 @@ for (const [name, action] of [
       await page.keyboard.press('Control+y')
       await expect(pose(page)).toHaveText(rotated!)
       await select(page, action)
-      await page.keyboard.press('q')
+      await quarterTurn(page, -1)
       await page.keyboard.press('Escape')
       await select(page, name)
       await expect(pose(page)).toHaveText(rotated!)
@@ -357,9 +358,9 @@ test('held mouse drag pauses camera WASD without moving furniture; release resum
       0.001,
     )
   }
-  await page.keyboard.press('r')
+  await quarterTurn(page, 1)
   await expect(pose(page)).toContainText('90°')
-  await page.keyboard.press('q')
+  await quarterTurn(page, -1)
   await page.keyboard.down('d')
   await page.mouse.up()
   await page.waitForTimeout(250)

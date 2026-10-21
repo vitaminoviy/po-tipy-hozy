@@ -1,3 +1,9 @@
+import {
+  axisBounds,
+  planarDistance,
+  overlaps,
+  type Planar,
+} from './planarGeometry'
 import { supportHeight } from './grounding'
 import { bins, type Room } from './cleaning'
 import {
@@ -28,7 +34,7 @@ export type Item = {
   kind: Kind
   x: number
   z: number
-  rotation: number
+  rotation: number // Legacy quarter-turn unit; fractions allow any angle (degrees / 90).
   surfaceId?: string
   surfaceZone?: string
   drawerIndex?: number
@@ -384,11 +390,19 @@ export function validateSurfacePlacement(
 }
 export function footprint(item: Item): [number, number] {
   const [w, d] = catalog[item.kind].size
-  return item.rotation % 2 ? [d, w] : [w, d]
+  const bounds = axisBounds({
+    x: item.x,
+    z: item.z,
+    w,
+    d,
+    angle: (item.rotation * Math.PI) / 2,
+    circle: catalog[item.kind].shape === 'circle',
+  })
+  return [bounds.w, bounds.d]
 }
 export const SMALL_GAP = 0.012
 export const CONTACT_GAP = 0.003
-type Bounds = { x: number; z: number; w: number; d: number; circle: boolean }
+type Bounds = ReturnType<typeof axisBounds> & { oriented: Planar }
 
 function localBounds(
   item: Item,
@@ -397,13 +411,14 @@ function localBounds(
   x = 0,
   z = 0,
   circle = false,
-): Bounds {
+): Planar {
   const angle = (item.rotation * Math.PI) / 2
   return {
     x: item.x + Math.cos(angle) * x + Math.sin(angle) * z,
     z: item.z - Math.sin(angle) * x + Math.cos(angle) * z,
-    w: item.rotation % 2 ? d : w,
-    d: item.rotation % 2 ? w : d,
+    w,
+    d,
+    angle,
     circle,
   }
 }
@@ -411,9 +426,12 @@ function localBounds(
 // Cup cylinder: radius .09; handle: centre X=.085, outer radius .038.
 // Preserve its asymmetric extent instead of inflating both sides of the origin.
 export function collisionBounds(item: Item): Bounds {
-  if (item.kind === 'cup') return localBounds(item, 0.213, 0.18, 0.0165)
   const [w, d] = catalog[item.kind].size
-  return localBounds(item, w, d, 0, 0, catalog[item.kind].shape === 'circle')
+  const oriented =
+    item.kind === 'cup'
+      ? localBounds(item, 0.213, 0.18, 0.0165)
+      : localBounds(item, w, d, 0, 0, catalog[item.kind].shape === 'circle')
+  return { ...axisBounds(oriented), oriented }
 }
 
 function volumeClearance(
@@ -432,7 +450,7 @@ function volumeClearance(
       if (highA <= lowB + 1e-6 || highB <= lowA + 1e-6) continue
       distance = Math.min(
         distance,
-        boundsDistance(
+        planarDistance(
           localBounds(
             a,
             first.s[0],
@@ -507,26 +525,12 @@ export function minimumGap(a: Item, b: Item): number {
   if (ca === 'furniture' && cb === 'furniture') return 0.02
   return ca === 'decor' && cb === 'decor' ? 0.06 : 0.08
 }
-// Distance between the actual axis-aligned footprints (quarter-turn rotations).
+// Distance between oriented footprints at any angle.
 // Circular decor uses its silhouette instead of an inflated square.
 export function clearanceBetween(a: Item, b: Item): number {
-  return boundsDistance(collisionBounds(a), collisionBounds(b))
-}
-function boundsDistance(a: Bounds, b: Bounds): number {
-  const { w: aw, d: ad, circle: ac } = a,
-    { w: bw, d: bd, circle: bc } = b
-  const dx = Math.abs(a.x - b.x),
-    dz = Math.abs(a.z - b.z)
-  if (ac && bc) return Math.hypot(dx, dz) - (aw + bw) / 2
-  if (ac || bc) {
-    const box = ac ? b : a,
-      { w, d } = box,
-      radius = (ac ? aw : bw) / 2
-    return Math.hypot(Math.max(0, dx - w / 2), Math.max(0, dz - d / 2)) - radius
-  }
-  return Math.hypot(
-    Math.max(0, dx - (aw + bw) / 2),
-    Math.max(0, dz - (ad + bd) / 2),
+  return planarDistance(
+    collisionBounds(a).oriented,
+    collisionBounds(b).oriented,
   )
 }
 export function placementCandidate(item: Item, x: number, z: number): Item {
@@ -560,9 +564,15 @@ export function validatePlacement(item: Item, items: Item[]): string | null {
   )
     return 'Ведро должно оставаться в своей комнате'
   const floorDecor = catalog[item.kind].category === 'floorDecor'
-  if (!floorDecor && left < 0.5 && right > -0.5 && front > 0.8 && back < 2.3)
+  if (
+    !floorDecor &&
+    overlaps(collisionBounds(item).oriented, { x: 0, z: 1.55, w: 1, d: 1.5 })
+  )
     return 'Оставьте свободным проход между комнатами'
-  if (!floorDecor && right > 1.7 && left < 3.1 && front > 3.0)
+  if (
+    !floorDecor &&
+    overlaps(collisionBounds(item).oriented, { x: 2.4, z: 3.7, w: 1.4, d: 1.4 })
+  )
     return 'Оставьте свободным вход в дом'
   for (const other of items) {
     if (other.id === item.id) continue

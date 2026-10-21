@@ -1,3 +1,4 @@
+import { quarterTurn, buttonQuarterTurn } from './support/rotation'
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 const select = (page: Page, name: string) =>
@@ -76,7 +77,7 @@ test('cup on blanket, book on sofa and box on chair keep real support and follow
   await page.keyboard.press('Control+y')
   await expect(page.getByTestId('attachment')).toHaveText('На: Мягкое кресло')
   await select(page, 'Мягкое кресло')
-  await page.getByRole('button', { name: /Повернуть/ }).click()
+  await buttonQuarterTurn(page)
   await select(page, 'Декоративная коробка')
   await expect(page.getByTestId('pose')).toHaveText('X -4.00 · Z 1.54 · 90°')
   await page.keyboard.press('Control+z')

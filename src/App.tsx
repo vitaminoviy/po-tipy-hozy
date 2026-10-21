@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState, useReducer, useRef } from 'react'
 import Scene from './Scene'
+import { flushSync } from 'react-dom'
+import {
+  advanceRotation,
+  beginRotation,
+  normalizeRotation,
+  releaseRotation,
+  TAP_SECONDS,
+  TAP_ANGLE,
+  type RotationMotion,
+} from './rotation'
 import { cleanFraction, dirtPatches, isClean } from './wiping'
 import {
   catalog,
@@ -82,6 +92,10 @@ export default function App() {
     'Выберите предмет в доме или в списке слева',
   )
   const [help, setHelp] = useState(false)
+  const rotationMotion = useRef<RotationMotion | null>(null)
+  const rotationKeys = useRef(new Set<string>())
+  const rotationTime = useRef(0)
+  const autoRotation = useRef(false)
   const setDraft = useCallback(
     (next: Item | null) => {
       if (next) {
@@ -94,7 +108,12 @@ export default function App() {
                 lastValid: null,
               }
         placementSession.current = rememberPlacement(session, next, items)
-      } else placementSession.current = null
+      } else {
+        placementSession.current = null
+        rotationMotion.current = null
+        rotationKeys.current.clear()
+        autoRotation.current = false
+      }
       setDraftState(next)
     },
     [items],
@@ -156,7 +175,7 @@ export default function App() {
       setMessage(
         isSmall(target)
           ? 'Наведите мышью на пол, поверхность или открытый ящик; Enter — поставить'
-          : 'Мышь — перенос, Q/R — поворот, Enter — поставить',
+          : 'Мышь — перенос; Q/R — 7,5° или удерживайте для вращения; Enter — поставить',
       )
     },
     [items, setDraft, cancelCleaning],
@@ -300,26 +319,118 @@ export default function App() {
     return true
   }
   const rotate = useCallback(
-    (direction = 1) => {
+    (direction = -1, held = false) => {
       if (!item || (mode === 'interact' && !draft)) return
       const active = draft ?? item
-      const next = {
-        ...active,
-        rotation: (active.rotation + direction + 4) % 4,
+      if (held) autoRotation.current = false
+      if (!draft) {
+        autoRotation.current = true
+        setDraft(active)
       }
-      if (draft) {
-        setDraft(next)
+      const pending = rotationMotion.current
+      const angle = pending?.angle ?? active.rotation
+      const next = beginRotation(angle, direction, held)
+      if (
+        pending &&
+        !pending.held &&
+        pending.direction === direction &&
+        pending.elapsed < TAP_SECONDS
+      )
+        next.target = pending.target + direction * TAP_ANGLE
+      rotationMotion.current = next
+      rotationTime.current = performance.now()
+    },
+    [item, draft, mode, setDraft],
+  )
+  const rotationLive = useRef({ draft, items, setDraft, commit })
+  rotationLive.current = { draft, items, setDraft, commit }
+  useEffect(() => {
+    let frame = 0
+    const tick = (now: number) => {
+      const live = rotationLive.current
+      const motion = rotationMotion.current
+      if (isEditing(document.activeElement)) {
+        rotationMotion.current = null
+        rotationKeys.current.clear()
+        frame = requestAnimationFrame(tick)
         return
       }
-      const error = validatePlacement(next, items)
-      if (error) setMessage(error + ' — поворот отменён')
-      else {
-        commit(next)
-        setMessage('Предмет повёрнут на 90°')
+      if (!live.draft) {
+        rotationMotion.current = null
+        autoRotation.current = false
+        rotationKeys.current.clear()
+      } else if (motion) {
+        const next = advanceRotation(
+          motion,
+          (now - rotationTime.current) / 1000,
+        )
+        rotationTime.current = now
+        const candidate = {
+          ...live.draft,
+          rotation: normalizeRotation(next.angle),
+        }
+        rotationMotion.current = next
+        live.setDraft(candidate)
+        if (!next.held && next.elapsed >= TAP_SECONDS) {
+          rotationMotion.current = null
+          if (autoRotation.current) {
+            const error = validatePlacement(candidate, live.items)
+            if (!error) live.commit(candidate)
+            setMessage(
+              error ? error + ' — поворот отменён' : 'Предмет повёрнут',
+            )
+            live.setDraft(null)
+            autoRotation.current = false
+          }
+        }
       }
-    },
-    [item, items, draft, commit, mode, setDraft],
-  )
+      frame = requestAnimationFrame(tick)
+    }
+    const up = (e: KeyboardEvent) => {
+      rotationKeys.current.delete(e.code)
+      const motion = rotationMotion.current
+      if (!['KeyQ', 'KeyR'].includes(e.code)) return
+      const direction =
+        Number(rotationKeys.current.has('KeyQ')) -
+        Number(rotationKeys.current.has('KeyR'))
+      rotationMotion.current =
+        direction && rotationLive.current.draft
+          ? beginRotation(
+              motion?.angle ?? rotationLive.current.draft.rotation,
+              direction,
+            )
+          : motion
+            ? releaseRotation(motion)
+            : null
+      if (!rotationMotion.current && motion && rotationLive.current.draft) {
+        const live = rotationLive.current
+        flushSync(() =>
+          live.setDraft({
+            ...live.draft!,
+            rotation: normalizeRotation(motion.angle),
+          }),
+        )
+      }
+      rotationTime.current = performance.now()
+    }
+    const clear = () => {
+      rotationMotion.current = null
+      rotationKeys.current.clear()
+    }
+    const visibility = () => {
+      if (document.hidden) clear()
+    }
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', clear)
+    document.addEventListener('visibilitychange', visibility)
+    frame = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', clear)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [])
   useEffect(() => {
     const webapp = window.Telegram?.WebApp
     webapp?.ready()
@@ -360,7 +471,19 @@ export default function App() {
         !(e.target instanceof HTMLInputElement)
       ) {
         e.preventDefault()
-        rotate(e.code === 'KeyQ' ? -1 : 1)
+        rotationKeys.current.add(e.code)
+        const direction =
+          Number(rotationKeys.current.has('KeyQ')) -
+          Number(rotationKeys.current.has('KeyR'))
+        if (direction) rotate(direction, true)
+        else {
+          const motion = rotationMotion.current
+          rotationMotion.current = null
+          if (motion && draft)
+            flushSync(() =>
+              setDraft({ ...draft, rotation: normalizeRotation(motion.angle) }),
+            )
+        }
       }
       if (e.key === 'Escape') {
         cancelCleaning()
@@ -630,7 +753,7 @@ export default function App() {
                 <kbd>Колесо</kbd> Приближать и отдалять
               </p>
               <p>
-                <kbd>Мышь</kbd> Перенос предмета; Q / R — поворот
+                <kbd>Мышь</kbd> Перенос предмета; Q / R — 7,5° или удержание
               </p>
               <p>
                 <kbd>Esc</kbd> Отменить перенос / снять выбор
@@ -671,7 +794,7 @@ export default function App() {
                 {shownItem ? (
                   <output data-testid="pose">
                     X {shownItem.x.toFixed(2)} · Z {shownItem.z.toFixed(2)} ·{' '}
-                    {shownItem.rotation * 90}°
+                    {Number((shownItem.rotation * 90).toFixed(1))}°
                   </output>
                 ) : (
                   'Выберите мебель, чтобы начать обустройство'

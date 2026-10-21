@@ -1,3 +1,4 @@
+import { quarterTurn, buttonQuarterTurn } from './support/rotation'
 import { test, expect, type Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 
@@ -82,18 +83,18 @@ test('furniture selection, rotation, drag, collision rollback and cancel', async
   await expect(page.locator('canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Скрыть стены' }).click()
   await page.getByRole('button', { name: 'Диван «Мох»', exact: true }).click()
-  await page.getByRole('button', { name: /Повернуть/ }).click()
+  await buttonQuarterTurn(page)
   await expect(page.getByTestId('pose')).toHaveText('X -2.80 · Z -2.45 · 0°')
   await expect(page.locator('footer')).toContainText('поворот отменён')
   await page
     .getByRole('button', { name: 'Журнальный стол', exact: true })
     .click()
-  await page.getByRole('button', { name: /Повернуть/ }).click()
+  await buttonQuarterTurn(page)
   await expect(page.getByTestId('pose')).toContainText('90°')
-  await page.getByRole('button', { name: /Повернуть/ }).click()
+  await buttonQuarterTurn(page)
   await expect(page.getByTestId('pose')).toContainText('180°')
-  await page.getByRole('button', { name: /Повернуть/ }).click()
-  await page.getByRole('button', { name: /Повернуть/ }).click()
+  await buttonQuarterTurn(page)
+  await buttonQuarterTurn(page)
   await drag(page, [-2.8, 0.59, -0.4], 1.3, 0.4)
   await page.mouse.up()
   await expect(page.locator('footer')).toContainText('Предмет размещён')
@@ -152,7 +153,7 @@ test('rugs drag under furniture, rotate in preview and place through occluding m
   await expect(page.getByTestId('pose')).toHaveText('X -2.80 · Z -0.40 · 0°')
   await page.getByRole('button', { name: 'Ковёр спальни', exact: true }).click()
   await page.getByRole('button', { name: 'Переместить', exact: true }).click()
-  await page.keyboard.press('r')
+  await quarterTurn(page, 1)
   await expect(page.getByTestId('pose')).toContainText('90°')
   const target = await project(page, 2.5, 0, 0)
   await page.mouse.move(target.x, target.y)
@@ -196,7 +197,7 @@ test('small motions keep the grab offset, and an invalid drag rolls back', async
   await expect(page.getByTestId('pose')).toHaveText('X -2.80 · Z -0.40 · 0°')
   await drag(page, [-2.8, 0.59, -0.4], 0.17, 0.09)
   await expect(page.getByTestId('pose')).toHaveText('X -2.63 · Z -0.31 · 0°')
-  await page.keyboard.press('r')
+  await quarterTurn(page, 1)
   await expect(page.getByTestId('pose')).toHaveText('X -2.63 · Z -0.31 · 90°')
   await page.mouse.up()
   await drag(page, [-2.63, 0.59, -0.31], 3, 0)
