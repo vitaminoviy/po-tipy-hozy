@@ -4,6 +4,7 @@ import {
   useState,
   type ComponentRef,
   type ReactNode,
+  type MutableRefObject,
 } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
@@ -13,6 +14,8 @@ import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
 import Cleaning from './TrashScene'
 import DirtScene from './DirtScene'
+import PaintScene from './PaintScene'
+import type { PaintState, PaintColor } from './painting'
 import type { DirtState } from './wiping'
 import type { Trash, Disposal } from './cleaning'
 import {
@@ -83,6 +86,13 @@ function StoredContents({
 }
 
 type Props = {
+  paint: PaintState[]
+  paintTool: boolean
+  paintColor: PaintColor
+  cancelPaint: MutableRefObject<() => void>
+  onPaintBegin: () => void
+  onPaintCommit: (id: string, color: PaintColor, mask: Uint8Array) => void
+  onPaintProgress: (id: string, fraction: number) => void
   dirt: DirtState[]
   onWipeBegin: () => void
   onWipeCommit: (id: string, mask: Uint8Array) => void
@@ -137,6 +147,7 @@ function Interior(p: Props) {
   current.current = p
   const keys = useRef(new Set<string>())
   const wiping = useRef(false)
+  const painting = useRef(false)
   const [quickHeld, setQuickHeld] = useState(false)
   useEffect(() => {
     if (!p.disposal) delete gl.domElement.dataset.flight
@@ -167,7 +178,7 @@ function Interior(p: Props) {
     const fast = keys.current.has('ShiftLeft') || keys.current.has('ShiftRight')
     // Only a held left-button drag pauses keyboard camera travel. A selected
     // item or click-to-place preview never takes ownership of WASD.
-    if (drag.current || wiping.current) {
+    if (drag.current || wiping.current || painting.current) {
       cameraVelocity.current.set(0, 0, 0)
     } else {
       const desired = new Vector3(direction.x, 0, direction.z).multiplyScalar(
@@ -181,7 +192,7 @@ function Interior(p: Props) {
       orbit.target.add(shift)
     }
     orbit.update()
-    orbit.enabled = !drag.current && !wiping.current
+    orbit.enabled = !drag.current && !wiping.current && !painting.current
     // Clamp after damping as well: residual mouse pan must not escape bounds.
     const bounded = orbit.target
       .clone()
@@ -581,9 +592,34 @@ function Interior(p: Props) {
         shadow-normalBias={0.04}
       />
       <House walls={p.walls} />
+      <PaintScene
+        paint={p.paint}
+        enabled={
+          p.paintTool &&
+          p.mode === 'interact' &&
+          !p.draft &&
+          !p.placing &&
+          !p.disposal
+        }
+        visible={p.walls}
+        color={p.paintColor}
+        cancelToken={p.cancelToken}
+        active={painting}
+        cancelRef={p.cancelPaint}
+        onBegin={p.onPaintBegin}
+        onCommit={p.onPaintCommit}
+        onProgress={p.onPaintProgress}
+        onHint={p.onMessage}
+      />
       <DirtScene
         dirt={p.dirt}
-        enabled={p.mode === 'interact' && !p.draft && !p.placing && !p.disposal}
+        enabled={
+          p.mode === 'interact' &&
+          !p.paintTool &&
+          !p.draft &&
+          !p.placing &&
+          !p.disposal
+        }
         cancelToken={p.cancelToken}
         active={wiping}
         onBegin={p.onWipeBegin}

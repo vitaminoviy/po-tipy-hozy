@@ -267,6 +267,51 @@ main {
   font-size: 17px;
   padding: 4px 10px;
 }
+.paint-tools {
+  position: absolute;
+  top: 144px;
+  left: 28px;
+  right: 28px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+.paint-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: #faf9f4ed;
+  font-size: 10px;
+}
+.paint-tools button[aria-pressed='true'] {
+  border-color: #9bad8f;
+}
+.paint-tools i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid #aaa78e;
+  border-radius: 50%;
+}
+.paint-tools > span {
+  padding: 5px;
+  background: #faf9f4ed;
+}
+@media (max-width: 700px) {
+  .paint-tools {
+    top: 124px;
+    left: 18px;
+    right: 18px;
+    font-size: 9px;
+  }
+  .paint-tools button {
+    font-size: 9px;
+    padding: 5px;
+  }
+}
 @media (max-width: 700px) {
   .interaction-tools {
     top: 84px;

@@ -19,6 +19,13 @@ import {
 } from './rotation'
 import { cleanFraction, dirtPatches, isClean } from './wiping'
 import {
+  paintColors,
+  paintWalls,
+  paintFraction,
+  paintComplete,
+  type PaintColor,
+} from './painting'
+import {
   catalog,
   categoryNames,
   isSmall,
@@ -88,6 +95,24 @@ export default function App() {
     dispatch({ type: 'trash-cancel' })
   }, [])
   const [mode, setMode] = useState<Mode>('move')
+  const [paintTool, setPaintTool] = useState(false)
+  const [paintColor, setPaintColor] = useState<PaintColor>('sage')
+  const cancelPaint = useRef<() => void>(() => {})
+  const activePaint = useRef<string | null>(null)
+  const paintOutput = useRef<HTMLOutputElement>(null)
+  const paintRoomOutput = useRef<HTMLSpanElement>(null)
+  const paintProgress = useCallback((id: string, fraction: number) => {
+    activePaint.current = id
+    if (paintOutput.current)
+      paintOutput.current.textContent = `${Math.floor(fraction * 100)}%`
+    if (paintRoomOutput.current)
+      paintRoomOutput.current.textContent =
+        roomNames[paintWalls.find((w) => w.id === id)!.room]
+  }, [])
+  useEffect(() => {
+    const wall = history.paint.find((w) => w.id === activePaint.current)
+    if (wall) paintProgress(wall.id, paintFraction(wall.mask))
+  }, [history.paint, paintTool, paintProgress])
   const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraftState] = useState<Item | null>(null)
@@ -175,6 +200,8 @@ export default function App() {
     setCancelToken((n) => n + 1)
   }, [setDraft])
   const switchMode = useCallback(() => {
+    cancelPaint.current()
+    setPaintTool(false)
     cancelTransfer()
     cancelCleaning()
     setMode((old) => (old === 'move' ? 'interact' : 'move'))
@@ -235,6 +262,7 @@ export default function App() {
   )
   const travel = useCallback(
     (type: 'undo' | 'redo') => {
+      cancelPaint.current()
       cancelTransfer()
       cancelCleaning()
       dispatch({ type })
@@ -561,7 +589,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.5.1
+          <i /> ПРОТОТИП 0.6
         </span>
       </header>
       <div className="workspace">
@@ -657,6 +685,25 @@ export default function App() {
               >
                 Взаимодействие <kbd>Tab</kbd>
               </button>
+              {mode === 'interact' && (
+                <button
+                  aria-pressed={paintTool}
+                  onClick={() => {
+                    cancelPaint.current()
+                    cancelTransfer()
+                    cancelCleaning()
+                    setPaintTool(!paintTool)
+                    if (!paintTool) setWalls(true)
+                    setMessage(
+                      !paintTool
+                        ? 'Валик: удерживайте ЛКМ и двигайтесь по верхним участкам левой стены гостиной или перегородки спальни; Esc — отменить мазок'
+                        : 'Покраска выключена',
+                    )
+                  }}
+                >
+                  Покраска
+                </button>
+              )}
             </div>
             <div className="history-tools">
               <button
@@ -677,8 +724,52 @@ export default function App() {
               </button>
             </div>
           </div>
+          {mode === 'interact' && paintTool && (
+            <div className="paint-tools" aria-label="Инструмент покраски">
+              {(Object.keys(paintColors) as PaintColor[]).map((color) => (
+                <button
+                  key={color}
+                  aria-pressed={paintColor === color}
+                  onClick={() => {
+                    cancelPaint.current()
+                    setPaintColor(color)
+                  }}
+                >
+                  <i style={{ backgroundColor: paintColors[color].hex }} />
+                  {paintColors[color].name}
+                </button>
+              ))}
+              <span>
+                <span ref={paintRoomOutput}>Наведите валик на стену</span> ·
+                Покраска стены:{' '}
+                <output ref={paintOutput} data-testid="paint-progress">
+                  0%
+                </output>
+              </span>
+            </div>
+          )}
           <div className={'scene' + (placing ? ' placing' : '')}>
             <Scene
+              paint={history.paint}
+              paintTool={paintTool}
+              paintColor={paintColor}
+              cancelPaint={cancelPaint}
+              onPaintBegin={() => {
+                cancelCleaning()
+                setSelected(null)
+                setMessage(
+                  'Удерживайте ЛКМ и двигайте валик; Esc — отменить мазок',
+                )
+              }}
+              onPaintCommit={(id, color, mask) => {
+                dispatch({ type: 'paint', id, color, mask })
+                setMessage(
+                  paintComplete(mask)
+                    ? 'Стена покрашена!'
+                    : 'Мазок нанесён. Продолжайте покраску; Ctrl+Z — отменить мазок.',
+                )
+              }}
+              onPaintProgress={paintProgress}
               dirt={history.dirt}
               onWipeBegin={() => {
                 cancelCleaning()
@@ -766,7 +857,10 @@ export default function App() {
             </button>
             <button
               className={!walls ? 'pressed' : ''}
-              onClick={() => setWalls(!walls)}
+              onClick={() => {
+                cancelPaint.current()
+                setWalls(!walls)
+              }}
               aria-pressed={!walls}
             >
               ▱ <span>{walls ? 'Скрыть стены' : 'Показать стены'}</span>
