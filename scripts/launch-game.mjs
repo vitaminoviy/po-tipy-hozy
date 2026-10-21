@@ -1,17 +1,19 @@
 import { createServer as createNetServer, createConnection } from 'node:net'
 import { access, mkdir, open, readFile, unlink } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, openSync, closeSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appIdentity, identityPath } from './app-identity.mjs'
+import { logPath } from './server-state.mjs'
 
 const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
 const execute = promisify(execFile)
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
 
-async function portIsOpen(port, host) {
+export async function portIsOpen(port, host) {
   return new Promise((done) => {
     const socket = createConnection({ port, host })
     const finish = (value) => {
@@ -36,21 +38,24 @@ async function portIsOpen(port, host) {
   })
 }
 
-async function matchesProject(root, port, host = '127.0.0.1') {
+export async function projectIdentity(root, port, host = '127.0.0.1') {
   try {
     const address = host === '::1' ? '[::1]' : host
     const response = await fetch(`http://${address}:${port}${identityPath}`, {
       signal: AbortSignal.timeout(1200),
       redirect: 'error',
     })
-    if (!response.ok) return false
+    if (!response.ok) return null
     const identity = await response.json(),
       expected = appIdentity(root)
     return Object.keys(expected).every((key) => identity[key] === expected[key])
+      ? identity
+      : null
   } catch {
-    return false
+    return null
   }
 }
+const matchesProject = async (...args) => !!(await projectIdentity(...args))
 
 function foreignPort(port) {
   return new Error(
@@ -74,8 +79,29 @@ async function ensurePage(port) {
     throw new Error('Vite не смог подготовить код игры. Браузер не открыт.')
 }
 
-// Serialize simultaneous double clicks. Stale locks are removed only when their PID no longer exists.
-async function startupLock(root, port) {
+// Serialize starts/stops. Windows pipe ownership follows process lifetime, not a saved PID.
+export async function startupLock(root, port) {
+  if (process.platform === 'win32') {
+    // The kernel releases named pipes after a crash/reboot; there is no stale PID lock.
+    const path = `\\\\.\\pipe\\quiet-home-${appIdentity(root).workspace}-${port}`
+    const deadline = Date.now() + 90000
+    while (Date.now() < deadline) {
+      const server = createNetServer()
+      try {
+        await new Promise((resolve, reject) => {
+          server.once('error', reject)
+          server.listen(path, resolve)
+        })
+        return () => new Promise((resolve) => server.close(resolve))
+      } catch (error) {
+        if (error.code !== 'EADDRINUSE') throw error
+        await delay(150)
+      }
+    }
+    throw new Error(
+      'Другой запуск или остановка ещё выполняется. Повторите попытку.',
+    )
+  }
   const directory = join(root, 'node_modules/.cache')
   await mkdir(directory, { recursive: true })
   const path = join(directory, `quiet-home-launch-${port}.lock`)
@@ -130,6 +156,8 @@ export async function launchGame({
   port = 5173,
   openBrowser,
   log = console.log,
+  background = false,
+  worker = false,
 } = {}) {
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('Некорректный порт сервера.')
@@ -142,6 +170,8 @@ export async function launchGame({
   let closed = false
   let output = ''
   let spawnError
+  const launcher = randomUUID()
+  const logFile = logPath(root, port)
   const close = async () => {
     if (!child || closed) return
     closed = true
@@ -158,6 +188,7 @@ export async function launchGame({
     }
   }
   try {
+    release = worker ? undefined : await startupLock(root, port)
     // Test a competing IPv6 listener too: localhost must not resolve to a foreign page.
     if (await portIsOpen(port, '::1')) {
       if (!(await matchesProject(root, port, '::1'))) throw foreignPort(port)
@@ -172,7 +203,6 @@ export async function launchGame({
           'Зависимости отсутствуют или установлены не полностью. Один раз выполните в папке проекта: pnpm install --frozen-lockfile. Затем снова запустите BAT-файл.',
         )
       }
-      release = await startupLock(root, port)
       if (!(await matchesProject(root, port))) {
         if (await portIsOpen(port, '127.0.0.1')) throw foreignPort(port)
         // pnpm passes these arguments to the existing dev script; strictPort prevents fallback.
@@ -184,41 +214,68 @@ export async function launchGame({
           String(port),
           '--strictPort',
         ]
-        child =
-          process.platform === 'win32'
-            ? spawn(
-                process.env.ComSpec || 'cmd.exe',
-                ['/d', '/s', '/c', `pnpm ${args.join(' ')}`],
-                {
-                  cwd: root,
-                  windowsHide: true,
-                  windowsVerbatimArguments: true,
-                  stdio: ['ignore', 'pipe', 'pipe'],
-                },
-              )
-            : spawn('pnpm', args, {
+        if (background) {
+          await mkdir(join(root, 'node_modules/.cache'), { recursive: true })
+          const fd = openSync(logFile, 'a')
+          try {
+            child = spawn(
+              process.execPath,
+              [
+                fileURLToPath(import.meta.url),
+                '--worker',
+                '--root',
+                root,
+                '--port',
+                String(port),
+              ],
+              {
                 cwd: root,
                 detached: true,
-                stdio: ['ignore', 'pipe', 'pipe'],
-              })
+                windowsHide: true,
+                stdio: ['ignore', fd, fd],
+                env: { ...process.env, QUIET_HOME_INSTANCE: launcher },
+              },
+            )
+            child.unref()
+          } finally {
+            closeSync(fd)
+          }
+        } else
+          child =
+            process.platform === 'win32'
+              ? spawn(
+                  process.env.ComSpec || 'cmd.exe',
+                  ['/d', '/s', '/c', `pnpm ${args.join(' ')}`],
+                  {
+                    cwd: root,
+                    windowsHide: true,
+                    windowsVerbatimArguments: true,
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                  },
+                )
+              : spawn('pnpm', args, {
+                  cwd: root,
+                  detached: true,
+                  stdio: ['ignore', 'pipe', 'pipe'],
+                })
         child.once('error', (error) => {
           spawnError = error
         })
-        for (const stream of [child.stdout, child.stderr])
+        for (const stream of [child.stdout, child.stderr].filter(Boolean))
           stream.on('data', (data) => {
             const text = data.toString()
             output = (output + text).slice(-12000)
             log(text.trimEnd())
           })
-        const deadline = Date.now() + 30000
+        const deadline = Date.now() + (background ? 75000 : 30000)
         while (!(await matchesProject(root, port))) {
           if (spawnError || child.exitCode !== null)
             throw new Error(
-              `Не удалось запустить pnpm dev. Проверьте Node.js, pnpm и конфигурацию Vite. ${spawnError?.message ?? output}`,
+              `Не удалось запустить pnpm dev. Проверьте Node.js, pnpm и конфигурацию Vite. ${spawnError?.message ?? (background ? readFileSync(logFile, 'utf8').slice(-12000) : output)}`,
             )
           if (Date.now() >= deadline)
             throw new Error(
-              'Сервер не подтвердил готовность за 30 секунд. Проверьте сообщения Vite.',
+              `Сервер не подтвердил готовность. Проверьте сообщения Vite${background ? ': ' + logFile : ''}.`,
             )
           await delay(150)
         }
@@ -231,6 +288,14 @@ export async function launchGame({
     )
       throw foreignPort(port)
     if (!(await matchesProject(root, port))) throw foreignPort(port)
+    if (
+      background &&
+      child &&
+      (await projectIdentity(root, port))?.launcher !== launcher
+    )
+      throw new Error(
+        'Другой экземпляр занял порт во время запуска. Браузер не открыт.',
+      )
     await ensurePage(port)
     if (release) {
       await release()
@@ -241,7 +306,9 @@ export async function launchGame({
     log(
       reused
         ? `Игра уже работает: ${url}. Второй сервер не запускается.`
-        : `Игра готова: ${url}. Не закрывайте это окно, пока играете. Для остановки нажмите Ctrl+C.`,
+        : background
+          ? `Игра готова: ${url}. Сервер работает независимо в фоне; окно запуска закроется. Остановка: Остановить игру.bat. Лог: ${logFile}`
+          : `Игра готова: ${url}. Не закрывайте это окно, пока играете. Для остановки нажмите Ctrl+C.`,
     )
     if (openBrowser) {
       try {
@@ -253,7 +320,19 @@ export async function launchGame({
         )
       }
     } else log('Безопасный режим: браузер не открывается.')
-    return { url, reused, identity: expected, pid: child?.pid, close }
+    return {
+      url,
+      reused,
+      identity: expected,
+      pid: child?.pid,
+      close: background
+        ? async () => {
+            if (!child) return
+            const { stopGame } = await import('./stop-game.mjs')
+            await stopGame({ root, port, expectedLauncher: launcher, log() {} })
+          }
+        : close,
+    }
   } catch (error) {
     await close()
     throw error
@@ -280,8 +359,21 @@ if (
   process.once('SIGTERM', stop)
   const args = process.argv.slice(2)
   const portIndex = args.indexOf('--port')
+  const rootIndex = args.indexOf('--root')
+  if (args.includes('--worker')) {
+    process.env.QUIET_HOME_WORKER_PID = String(process.pid)
+    console.log(
+      `[${new Date().toISOString()}] Фоновый процесс ${process.pid}: запуск Vite.`,
+    )
+  }
   launchGame({
+    root:
+      args.includes('--worker') && rootIndex >= 0
+        ? args[rootIndex + 1]
+        : rootDirectory,
     port: portIndex < 0 ? 5173 : Number(args[portIndex + 1]),
+    background: !args.includes('--worker'),
+    worker: args.includes('--worker'),
     openBrowser:
       args.includes('--open-browser') && !args.includes('--no-browser')
         ? openWindowsBrowser

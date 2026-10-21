@@ -21,7 +21,8 @@ if errorlevel 1 (
   popd
   exit /b 1
 )
-node "%~dp0scripts\launch-game.mjs" --open-browser %*
+rem Launcher waits for readiness, then exits; its hidden worker owns the server.
+node "%~dp0scripts\launch-game.mjs" --background --open-browser %*
 set "GAME_EXIT=%ERRORLEVEL%"
 if not "%GAME_EXIT%"=="0" pause
 popd

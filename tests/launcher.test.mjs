@@ -8,11 +8,18 @@ import { join, dirname } from 'node:path'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { launchGame } from '../scripts/launch-game.mjs'
+import { stopGame } from '../scripts/stop-game.mjs'
 import { appIdentity, identityPath } from '../scripts/app-identity.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const execute = promisify(execFile)
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
+function assertIdentity(actual) {
+  for (const [key, value] of Object.entries(appIdentity(root)))
+    assert.equal(actual[key], value)
+  assert.ok(Number.isInteger(actual.pid))
+  assert.ok(actual.instance)
+}
 async function fixture(prefix) {
   await mkdir(join(root, 'artifacts'), { recursive: true })
   return mkdtemp(join(root, `artifacts/launcher-${prefix}-`))
@@ -34,7 +41,7 @@ test('fresh pnpm dev launch verifies identity and page, opens once and keeps ser
     async openBrowser(url) {
       assert.equal(url, `http://localhost:${port}/`)
       const response = await fetch(`http://127.0.0.1:${port}${identityPath}`)
-      assert.deepEqual(await response.json(), appIdentity(root))
+      assertIdentity(await response.json())
       assert.ok((await (await fetch(url)).text()).includes('/src/main.tsx'))
       opened++
     },
@@ -275,24 +282,18 @@ function startBatch({
 }
 
 test(
-  'Windows BAT fresh server waits for readiness in safe mode and stays open',
+  'Windows BAT exits after readiness; independent server survives CMD exit, reuses and stops',
   { skip: process.platform !== 'win32' },
   async () => {
     const port = await freePort()
     const run = startBatch({ port })
     try {
-      const deadline = Date.now() + 30000
-      while (
-        !run.getOutput().includes('Безопасный режим: браузер не открывается.')
-      ) {
-        if (run.child.exitCode !== null || Date.now() > deadline)
-          assert.fail(run.getOutput())
-        await delay(150)
-      }
-      assert.equal(run.child.exitCode, null)
-      assert.deepEqual(
+      const completed = await run.completion
+      assert.equal(completed.code, 0, completed.output)
+      assert.equal(run.child.exitCode, 0)
+      await delay(400)
+      assertIdentity(
         await (await fetch(`http://127.0.0.1:${port}${identityPath}`)).json(),
-        appIdentity(root),
       )
       assert.equal((run.getOutput().match(/Игра готова:/g) ?? []).length, 1)
       assert.ok(
@@ -305,13 +306,7 @@ test(
       assert.match(second.output, /Безопасный режим/)
       assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200)
     } finally {
-      // Only this test's freshly spawned BAT process tree, never a process found by port.
-      await execute(
-        'taskkill.exe',
-        ['/PID', String(run.child.pid), '/T', '/F'],
-        { windowsHide: true },
-      ).catch(() => {})
-      await run.completion
+      await stopGame({ port, log() {} })
     }
   },
 )
@@ -365,7 +360,11 @@ test(
       join(directory, 'package.json'),
       JSON.stringify({ dependencies: { react: '*' } }),
     )
-    for (const name of ['launch-game.mjs', 'app-identity.mjs'])
+    for (const name of [
+      'launch-game.mjs',
+      'app-identity.mjs',
+      'server-state.mjs',
+    ])
       await writeFile(
         join(directory, 'scripts', name),
         await readFile(join(root, 'scripts', name)),

@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite'
 export const identityPath: string
+export const stopPath: string
 export function appIdentity(root: string): {
   app: string
   protocol: number
