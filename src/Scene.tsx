@@ -91,6 +91,8 @@ type Props = {
   selected: string | null
   draft: Item | null
   getDraft: () => Item | null
+  onMove: (update: () => Item | null) => void
+  flushMove: () => void
   placing: boolean
   walls: boolean
   resetCamera: number
@@ -309,13 +311,15 @@ function Interior(p: Props) {
       if (controls.current) controls.current.enabled = true
     }
     cancelGesture.current = cancel
-    const move = (e: PointerEvent) => {
+    const moveNow = (
+      e: Pick<PointerEvent, 'clientX' | 'clientY' | 'buttons' | 'pointerId'>,
+    ): Item | null => {
       const active = drag.current,
         props = current.current
       if (!active) {
-        if (!props.placing || e.buttons !== 0) return
+        if (!props.placing || e.buttons !== 0) return null
         const item = props.items.find((i) => i.id === props.selected)
-        if (!item) return
+        if (!item) return null
         const rect = gl.domElement.getBoundingClientRect()
         if (
           e.clientX < rect.left ||
@@ -323,25 +327,24 @@ function Interior(p: Props) {
           e.clientY < rect.top ||
           e.clientY > rect.bottom
         )
-          return
+          return null
         const candidate = candidateAt(
           props.getDraft() ?? item,
           e.clientX,
           e.clientY,
         )
-        if (candidate) props.onDraft(candidate)
-        return
+        return candidate
       }
-      if (active.pointer !== e.pointerId) return
+      if (active.pointer !== e.pointerId) return null
       if (active.token !== props.cancelToken) {
         cancel()
-        return
+        return null
       }
       if (
         !active.moved &&
         active.screen.distanceTo(new Vector2(e.clientX, e.clientY)) < 4
       )
-        return
+        return null
       active.moved = true
       const next = candidateAt(
         isSmall(active.item)
@@ -354,9 +357,27 @@ function Interior(p: Props) {
         e.clientY,
         active.offset,
       )
-      if (!next) return
+      if (!next) return null
       active.draft = next
-      props.onDraft(next)
+      return next
+    }
+    const move = (e: PointerEvent) => {
+      const props = current.current
+      if (
+        drag.current
+          ? drag.current.pointer !== e.pointerId
+          : !props.placing || e.buttons !== 0
+      )
+        return
+      const sample = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        buttons: e.buttons,
+        pointerId: e.pointerId,
+      }
+      // Only the latest sample is useful for the next displayed pose. The shared
+      // App RAF combines it with rotation before validation and React publication.
+      props.onMove(() => moveNow(sample))
     }
     const up = (e: PointerEvent) => {
       const active = drag.current
@@ -365,6 +386,7 @@ function Interior(p: Props) {
         cancel()
         return
       }
+      current.current.flushMove()
       const candidate = {
         ...(current.current.getDraft() ?? active.draft),
       }
@@ -389,6 +411,7 @@ function Interior(p: Props) {
         e.preventDefault()
       }
       if (e.code === 'Enter' && current.current.getDraft()) {
+        current.current.flushMove()
         const candidate = current.current.getDraft()!
         const error = validatePlacement(candidate, current.current.items)
         if (error) current.current.onMessage(error)
@@ -532,6 +555,16 @@ function Interior(p: Props) {
     if (controls.current) controls.current.enabled = false
     p.onDraft(item)
   }
+  const shownItems = p.draft
+    ? p.items.map((i) =>
+        i.id === p.draft!.id
+          ? {
+              ...p.draft!,
+              drawers: [false, false, false] as [boolean, boolean, boolean],
+            }
+          : i,
+      )
+    : p.items
   return (
     <>
       <ambientLight intensity={0.45} />
@@ -570,20 +603,6 @@ function Interior(p: Props) {
       />
       {/** Children resolve against the preview parent so attachments move atomically. */}
       {p.items.map((item) => {
-        const shownItems = p.draft
-          ? p.items.map((i) =>
-              i.id === p.draft!.id
-                ? {
-                    ...p.draft!,
-                    drawers: [false, false, false] as [
-                      boolean,
-                      boolean,
-                      boolean,
-                    ],
-                  }
-                : i,
-            )
-          : p.items
         const shown = shownItems.find((i) => i.id === item.id)!
         const parent = shownItems.find((i) => i.id === shown.surfaceId)
         return (
@@ -598,7 +617,9 @@ function Interior(p: Props) {
               key={item.id}
               item={worldPose(shown, shownItems)}
               selected={p.selected === item.id}
-              invalid={!!validatePlacement(shown, p.items)}
+              invalid={
+                p.selected === item.id && !!validatePlacement(shown, p.items)
+              }
               onDown={down}
               mode={p.mode}
               drawerMotion={drawerMotion.current}

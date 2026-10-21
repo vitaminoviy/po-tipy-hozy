@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, useReducer, useRef } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useReducer,
+  useRef,
+  useMemo,
+} from 'react'
 import Scene from './Scene'
 import { flushSync } from 'react-dom'
 import {
@@ -88,6 +95,10 @@ export default function App() {
   // Keep one synchronous pose so an angle update never restores old coordinates.
   const draftPose = useRef<Item | null>(null)
   const getDraft = useCallback(() => draftPose.current, [])
+  const pendingMove = useRef<(() => Item | null) | null>(null)
+  const queueMove = useCallback((update: () => Item | null) => {
+    pendingMove.current = update
+  }, [])
   const placementSession = useRef<PlacementSession | null>(null)
   const [placing, setPlacing] = useState(false)
   const [walls, setWalls] = useState(true)
@@ -102,6 +113,8 @@ export default function App() {
   const autoRotation = useRef(false)
   const setDraft = useCallback(
     (next: Item | null) => {
+      // An explicit pose (e.g. a drawer button) supersedes older pointer input.
+      pendingMove.current = null
       draftPose.current = next
       if (next) {
         const previous = placementSession.current
@@ -123,7 +136,17 @@ export default function App() {
     },
     [items],
   )
+  const flushMove = useCallback(() => {
+    const update = pendingMove.current
+    pendingMove.current = null
+    const next = update?.()
+    if (next) setDraft(next)
+  }, [setDraft])
   const item = items.find((i) => i.id === selected)
+  const placementError = useMemo(
+    () => (draft ? validatePlacement(draft, items) : null),
+    [draft, items],
+  )
   const shownItem =
     (draft ?? item) ? worldPose((draft ?? item)!, items) : undefined
   const commit = useCallback(
@@ -347,20 +370,24 @@ export default function App() {
     },
     [item, draft, mode, setDraft],
   )
-  const rotationLive = useRef({ items, setDraft, commit })
-  rotationLive.current = { items, setDraft, commit }
+  const rotationLive = useRef({ items, setDraft, commit, flushMove })
+  rotationLive.current = { items, setDraft, commit, flushMove }
   useEffect(() => {
     let frame = 0
     const tick = (now: number) => {
       const live = rotationLive.current
       const motion = rotationMotion.current
-      const latest = draftPose.current
       if (isEditing(document.activeElement)) {
+        pendingMove.current = null
         rotationMotion.current = null
         rotationKeys.current.clear()
         frame = requestAnimationFrame(tick)
         return
       }
+      const previous = draftPose.current
+      const update = pendingMove.current
+      pendingMove.current = null
+      const latest = update?.() ?? draftPose.current
       if (!latest) {
         rotationMotion.current = null
         autoRotation.current = false
@@ -389,13 +416,14 @@ export default function App() {
             autoRotation.current = false
           }
         }
-      }
+      } else if (latest !== previous) live.setDraft(latest)
       frame = requestAnimationFrame(tick)
     }
     const up = (e: KeyboardEvent) => {
       rotationKeys.current.delete(e.code)
-      const motion = rotationMotion.current
       if (!['KeyQ', 'KeyR'].includes(e.code)) return
+      rotationLive.current.flushMove()
+      const motion = rotationMotion.current
       const direction =
         Number(rotationKeys.current.has('KeyQ')) -
         Number(rotationKeys.current.has('KeyR'))
@@ -477,6 +505,7 @@ export default function App() {
         !(e.target instanceof HTMLInputElement)
       ) {
         e.preventDefault()
+        flushMove()
         rotationKeys.current.add(e.code)
         const direction =
           Number(rotationKeys.current.has('KeyQ')) -
@@ -514,6 +543,7 @@ export default function App() {
     item,
     interact,
     setDraft,
+    flushMove,
     cancelCleaning,
     selectedTrash,
     disposal,
@@ -531,7 +561,7 @@ export default function App() {
           Первый дом <span>/</span> Свободное обустройство
         </div>
         <span className="version">
-          <i /> ПРОТОТИП 0.5
+          <i /> ПРОТОТИП 0.5.1
         </span>
       </header>
       <div className="workspace">
@@ -674,6 +704,8 @@ export default function App() {
               selected={selected}
               draft={draft}
               getDraft={getDraft}
+              onMove={queueMove}
+              flushMove={flushMove}
               placing={placing}
               walls={walls}
               resetCamera={resetCamera}
@@ -900,12 +932,15 @@ export default function App() {
               {draft && (
                 <button
                   onClick={() => {
-                    const error = validatePlacement(draft, items)
+                    flushMove()
+                    const candidate = draftPose.current
+                    if (!candidate) return
+                    const error = validatePlacement(candidate, items)
                     if (error) {
                       setMessage(error)
                       return
                     }
-                    commit(draft)
+                    commit(candidate)
                     cancelTransfer()
                   }}
                 >
@@ -950,13 +985,10 @@ export default function App() {
         </main>
       </div>
       <footer>
-        <span
-          role="status"
-          className={draft && validatePlacement(draft, items) ? 'invalid' : ''}
-        >
+        <span role="status" className={placementError ? 'invalid' : ''}>
           <i />
           {draft
-            ? validatePlacement(draft, items) ||
+            ? placementError ||
               (placing
                 ? 'Можно разместить — щёлкните для установки'
                 : 'Можно разместить — отпустите кнопку мыши')
