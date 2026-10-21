@@ -1,18 +1,9 @@
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import {
-  CanvasTexture,
-  LinearFilter,
-  LinearMipmapLinearFilter,
-  Group,
-  Mesh,
-  MeshStandardMaterial,
-  Raycaster,
-  Vector2,
-} from 'three'
+import { Group, Mesh, MeshStandardMaterial, Raycaster, Vector2 } from 'three'
 import { isEditing } from './controls'
+import { createPaintTexture, updatePaintTexture } from './paintTexture'
 import {
-  paintGrid,
   fillPaint,
   paintColors,
   paintWalls,
@@ -56,29 +47,15 @@ function WallLayer({
   const { gl } = useThree()
   const material = useRef<MeshStandardMaterial>(null)
   const resources = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    const { width, height } = paintGrid(wall)
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')!
-    const pixels = context.createImageData(width, height)
-    pixels.data.fill(255)
-    for (let i = 3; i < pixels.data.length; i += 4) pixels.data[i] = 0
-    const texture = new CanvasTexture(canvas)
-    texture.magFilter = LinearFilter
-    texture.minFilter = LinearMipmapLinearFilter
+    const texture = createPaintTexture(wall)
     texture.anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy())
-    return { context, pixels, texture }
+    return { texture }
   }, [wall, gl])
   useEffect(() => () => resources.texture.dispose(), [resources])
   const last = useRef<Uint8Array | null>(null)
   useFrame(() => {
     if (!view.changed && last.current === view.mask) return
-    for (let i = 0; i < view.mask.length; i++) {
-      resources.pixels.data[i * 4 + 3] = view.mask[i]
-    }
-    resources.context.putImageData(resources.pixels, 0, 0)
-    resources.texture.needsUpdate = true
+    updatePaintTexture(resources.texture, view.mask)
     material.current!.color.set(paintColors[view.color ?? 'sage'].hex)
     view.changed = false
     last.current = view.mask
@@ -105,7 +82,7 @@ function WallLayer({
         <planeGeometry args={[wall.w, wall.h]} />
         <meshStandardMaterial
           ref={material}
-          map={resources.texture}
+          alphaMap={resources.texture}
           transparent
           depthWrite={false}
           roughness={1}

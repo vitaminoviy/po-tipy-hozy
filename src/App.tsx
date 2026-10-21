@@ -840,7 +840,7 @@ export default function App() {
             Управление
           </button>
           <p className="menu-version">
-            Prototype 0.6.2 · Дополнительные команды
+            Prototype 0.6.3 · Дополнительные команды
           </p>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">
