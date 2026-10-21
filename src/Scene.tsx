@@ -90,6 +90,7 @@ type Props = {
   items: Item[]
   selected: string | null
   draft: Item | null
+  getDraft: () => Item | null
   placing: boolean
   walls: boolean
   resetCamera: number
@@ -323,7 +324,11 @@ function Interior(p: Props) {
           e.clientY > rect.bottom
         )
           return
-        const candidate = candidateAt(props.draft ?? item, e.clientX, e.clientY)
+        const candidate = candidateAt(
+          props.getDraft() ?? item,
+          e.clientX,
+          e.clientY,
+        )
         if (candidate) props.onDraft(candidate)
         return
       }
@@ -340,10 +345,10 @@ function Interior(p: Props) {
       active.moved = true
       const next = candidateAt(
         isSmall(active.item)
-          ? (props.draft ?? active.item)
+          ? (props.getDraft() ?? active.item)
           : {
               ...active.item,
-              rotation: props.draft?.rotation ?? active.item.rotation,
+              rotation: props.getDraft()?.rotation ?? active.item.rotation,
             },
         e.clientX,
         e.clientY,
@@ -361,10 +366,10 @@ function Interior(p: Props) {
         return
       }
       const candidate = {
-        ...active.draft,
-        rotation: current.current.draft?.rotation ?? active.draft.rotation,
+        ...(current.current.getDraft() ?? active.draft),
       }
-      if (active.moved) current.current.onDrop(candidate)
+      if (active.moved || candidate.rotation !== active.item.rotation)
+        current.current.onDrop(candidate)
       cancel()
     }
     const key = (e: KeyboardEvent) => {
@@ -383,8 +388,8 @@ function Interior(p: Props) {
         resetView.current()
         e.preventDefault()
       }
-      if (e.code === 'Enter' && current.current.draft) {
-        const candidate = current.current.draft
+      if (e.code === 'Enter' && current.current.getDraft()) {
+        const candidate = current.current.getDraft()!
         const error = validatePlacement(candidate, current.current.items)
         if (error) current.current.onMessage(error)
         else {
@@ -437,7 +442,11 @@ function Interior(p: Props) {
       }
       const item = props.items.find((i) => i.id === props.selected)
       if (!item) return
-      const candidate = candidateAt(props.draft ?? item, e.clientX, e.clientY)
+      const candidate = candidateAt(
+        props.getDraft() ?? item,
+        e.clientX,
+        e.clientY,
+      )
       if (!candidate) return
       const error = validatePlacement(candidate, props.items)
       props.onDraft(candidate)

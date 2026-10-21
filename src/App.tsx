@@ -84,6 +84,10 @@ export default function App() {
   const [cancelToken, setCancelToken] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraftState] = useState<Item | null>(null)
+  // Pointer events and RAF can both run before React publishes another render.
+  // Keep one synchronous pose so an angle update never restores old coordinates.
+  const draftPose = useRef<Item | null>(null)
+  const getDraft = useCallback(() => draftPose.current, [])
   const placementSession = useRef<PlacementSession | null>(null)
   const [placing, setPlacing] = useState(false)
   const [walls, setWalls] = useState(true)
@@ -98,6 +102,7 @@ export default function App() {
   const autoRotation = useRef(false)
   const setDraft = useCallback(
     (next: Item | null) => {
+      draftPose.current = next
       if (next) {
         const previous = placementSession.current
         const session =
@@ -321,9 +326,9 @@ export default function App() {
   const rotate = useCallback(
     (direction = -1, held = false) => {
       if (!item || (mode === 'interact' && !draft)) return
-      const active = draft ?? item
+      const active = draftPose.current ?? item
       if (held) autoRotation.current = false
-      if (!draft) {
+      if (!draftPose.current) {
         autoRotation.current = true
         setDraft(active)
       }
@@ -342,20 +347,21 @@ export default function App() {
     },
     [item, draft, mode, setDraft],
   )
-  const rotationLive = useRef({ draft, items, setDraft, commit })
-  rotationLive.current = { draft, items, setDraft, commit }
+  const rotationLive = useRef({ items, setDraft, commit })
+  rotationLive.current = { items, setDraft, commit }
   useEffect(() => {
     let frame = 0
     const tick = (now: number) => {
       const live = rotationLive.current
       const motion = rotationMotion.current
+      const latest = draftPose.current
       if (isEditing(document.activeElement)) {
         rotationMotion.current = null
         rotationKeys.current.clear()
         frame = requestAnimationFrame(tick)
         return
       }
-      if (!live.draft) {
+      if (!latest) {
         rotationMotion.current = null
         autoRotation.current = false
         rotationKeys.current.clear()
@@ -366,7 +372,7 @@ export default function App() {
         )
         rotationTime.current = now
         const candidate = {
-          ...live.draft,
+          ...latest,
           rotation: normalizeRotation(next.angle),
         }
         rotationMotion.current = next
@@ -394,19 +400,19 @@ export default function App() {
         Number(rotationKeys.current.has('KeyQ')) -
         Number(rotationKeys.current.has('KeyR'))
       rotationMotion.current =
-        direction && rotationLive.current.draft
+        direction && draftPose.current
           ? beginRotation(
-              motion?.angle ?? rotationLive.current.draft.rotation,
+              motion?.angle ?? draftPose.current!.rotation,
               direction,
             )
           : motion
             ? releaseRotation(motion)
             : null
-      if (!rotationMotion.current && motion && rotationLive.current.draft) {
+      if (!rotationMotion.current && motion && draftPose.current) {
         const live = rotationLive.current
         flushSync(() =>
           live.setDraft({
-            ...live.draft!,
+            ...draftPose.current!,
             rotation: normalizeRotation(motion.angle),
           }),
         )
@@ -481,7 +487,10 @@ export default function App() {
           rotationMotion.current = null
           if (motion && draft)
             flushSync(() =>
-              setDraft({ ...draft, rotation: normalizeRotation(motion.angle) }),
+              setDraft({
+                ...draftPose.current!,
+                rotation: normalizeRotation(motion.angle),
+              }),
             )
         }
       }
@@ -664,6 +673,7 @@ export default function App() {
               items={items}
               selected={selected}
               draft={draft}
+              getDraft={getDraft}
               placing={placing}
               walls={walls}
               resetCamera={resetCamera}
