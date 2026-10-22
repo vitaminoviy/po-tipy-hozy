@@ -90,7 +90,7 @@ test('all four trash types have forgiving mouse targets, cancel safely and do no
   await expect(progress(page, 'living')).toContainText('0 / 5')
 })
 
-test('cleanup is animated, counts once, supports undo/redo, ignores disposed targets and resets on reload', async ({
+test('cleanup is animated, counts once, supports undo/redo, ignores disposed targets and persists on reload', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -119,7 +119,7 @@ test('cleanup is animated, counts once, supports undo/redo, ignores disposed tar
   await page.keyboard.press('Control+y')
   await expect(progress(page, 'living')).toContainText('1 / 5')
   await page.reload()
-  await expect(progress(page, 'living')).toContainText('0 / 5')
+  await expect(progress(page, 'living')).toContainText('1 / 5')
   await expect(progress(page, 'bedroom')).toContainText('0 / 4')
   expect(errors).toEqual([])
 })

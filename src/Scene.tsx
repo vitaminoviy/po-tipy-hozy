@@ -179,7 +179,19 @@ function Interior(p: Props) {
     if (!p.disposal) delete gl.domElement.dataset.flight
   }, [p.disposal, gl])
   const cameraVelocity = useRef(new Vector3())
-  const drawerMotion = useRef(new Map<string, number>())
+  const drawerMotion = useRef(
+    new Map(
+      p.items.flatMap((item) =>
+        drawerSpecs(item).map(
+          (_, index) =>
+            [
+              `${item.id}:${index}`,
+              item.drawers?.[index] ? DRAWER_TRAVEL : 0,
+            ] as [string, number],
+        ),
+      ),
+    ),
+  )
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05),
       props = current.current,

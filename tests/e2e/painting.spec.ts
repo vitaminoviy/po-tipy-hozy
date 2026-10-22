@@ -99,7 +99,7 @@ for (const index of [0, 1])
       expect(errors).toEqual([])
     },
   )
-test('three gestures undo separately, lock color, survive tool changes and reset on reload', async ({
+test('three gestures undo separately, lock color, survive tool changes and persist on reload', async ({
   page,
 }) => {
   await open(page)
@@ -122,7 +122,7 @@ test('three gestures undo separately, lock color, survive tool changes and reset
   expect(await percent(page)).toBe(three)
   await open(page)
   await move(page, w, 0, 0.7)
-  expect(await percent(page)).toBe(0)
+  expect(await percent(page)).toBe(three)
 })
 test('exit and re-entry break the gesture, without bridging unvisited wall areas', async ({
   page,

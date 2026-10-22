@@ -89,7 +89,7 @@ test('real wiping is local, motion driven, persistent, cancellable and one histo
   await page.mouse.up()
   await expect(page.getByTestId('floor-living')).toHaveText(partial + '%')
   await page.reload()
-  await expect(page.getByTestId('floor-living')).toHaveText('0%')
+  await expect(page.getByTestId('floor-living')).toHaveText(partial + '%')
 })
 
 test('both patches visibly erase along strokes, reach completion and restore with undo', async ({

@@ -160,7 +160,7 @@ test('whole planks follow fast drags, hold is inert, repeat/undo/redo/Esc/blur p
     'data-scene-ready',
     'true',
   )
-  expect((await state(page)).material).toBeNull()
+  expect(await state(page)).toEqual(first)
 })
 test('conflicting material requires an explicit undoable reset and rooms stay independent', async ({
   page,
@@ -187,6 +187,17 @@ test('conflicting material requires an explicit undoable reset and rooms stay in
   expect((await state(page)).material).toBe('tile')
   expect((await state(page, 'bedroom')).laid).toBe(0)
   await page.screenshot({ path: 'artifacts/07/tiles.png' })
+  const final = await state(page)
+  await expect(page.getByTestId('save-status')).toHaveAttribute(
+    'data-status',
+    'saved',
+  )
+  await page.reload()
+  await expect(page.locator('canvas')).toHaveAttribute(
+    'data-scene-ready',
+    'true',
+  )
+  expect(await state(page)).toEqual(final)
 })
 for (const angle of [0, 110])
   test(
@@ -273,6 +284,17 @@ for (const angle of [0, 110])
       await page.keyboard.press('Control+y')
       await expect(page.getByTestId('pose')).toContainText('Z 1.50')
       expect(await state(page)).toEqual(floorBefore)
+      await expect(page.getByTestId('save-status')).toHaveAttribute(
+        'data-status',
+        'saved',
+      )
+      await page.reload()
+      await expect(page.locator('canvas')).toHaveAttribute(
+        'data-scene-ready',
+        'true',
+      )
+      expect(await state(page)).toEqual(floorBefore)
+      expect((await state(page, 'bedroom')).complete).toBe(true)
     },
   )
 

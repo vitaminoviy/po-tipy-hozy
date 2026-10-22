@@ -8,6 +8,7 @@ import type { Room } from './cleaning'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useState,
   useReducer,
   useRef,
@@ -50,6 +51,7 @@ import {
   drawerOpeningError,
   type Mode,
   type Interaction,
+  type History,
 } from './history'
 import { floorSupport } from './grounding'
 import { isEditing, primaryInteraction } from './controls'
@@ -78,10 +80,30 @@ declare global {
     }
   }
 }
-export default function App() {
-  const [history, dispatch] = useReducer(historyReducer, undefined, () =>
-    createHistory(),
+export default function App({
+  initialHistory,
+  onWorldCommit,
+  onReset,
+}: {
+  initialHistory?: History
+  onWorldCommit?: (history: History) => void
+  onReset?: () => void
+}) {
+  const [history, dispatch] = useReducer(
+    historyReducer,
+    initialHistory,
+    (initial) => initial ?? createHistory(),
   )
+  const confirmed = useRef({ past: history.past, future: history.future })
+  useLayoutEffect(() => {
+    if (
+      confirmed.current.past !== history.past ||
+      confirmed.current.future !== history.future
+    ) {
+      confirmed.current = { past: history.past, future: history.future }
+      onWorldCommit?.(history)
+    }
+  }, [history, onWorldCommit])
   const items = history.present
   const roomPaint = useMemo(
     () => ({
@@ -902,7 +924,8 @@ export default function App() {
           <button onClick={() => setHelp(!help)} aria-expanded={help}>
             Управление
           </button>
-          <p className="menu-version">Prototype 0.7 · Дополнительные команды</p>
+          <p className="menu-version">Prototype 0.8 · Дополнительные команды</p>
+          <button onClick={onReset}>Начать заново</button>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">
               <button
