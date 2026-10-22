@@ -12,6 +12,11 @@ import { logPath } from './server-state.mjs'
 const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
 const execute = promisify(execFile)
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
+// Opt-in launcher audit. Never log the identity response (contains a stop token).
+function probeTrace(data) {
+  if (process.env.QUIET_HOME_DIAGNOSTICS === '1')
+    console.error('[server-probe]', JSON.stringify({ at: Date.now(), ...data }))
+}
 
 export async function portIsOpen(port, host) {
   return new Promise((done) => {
@@ -22,14 +27,16 @@ export async function portIsOpen(port, host) {
     }
     socket.once('connect', () => finish(true))
     socket.once('error', (error) => {
+      probeTrace({ probe: 'tcp', port, host, error: error.code })
       if (error.code === 'ECONNREFUSED') return finish(false)
       // Some Windows policies deny IPv6 connections even though a listener exists.
       // Check exclusive binding instead of treating EACCES as a free port.
       socket.destroy()
       const probe = createNetServer()
-      probe.once('error', (error) =>
-        done(!['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)),
-      )
+      probe.once('error', (error) => {
+        probeTrace({ probe: 'bind', port, host, error: error.code })
+        done(!['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code))
+      })
       probe.listen({ port, host, exclusive: true }, () =>
         probe.close(() => done(false)),
       )
@@ -45,13 +52,27 @@ export async function projectIdentity(root, port, host = '127.0.0.1') {
       signal: AbortSignal.timeout(1200),
       redirect: 'error',
     })
-    if (!response.ok) return null
+    if (!response.ok) {
+      probeTrace({ probe: 'identity', port, host, status: response.status })
+      return null
+    }
     const identity = await response.json(),
       expected = appIdentity(root)
-    return Object.keys(expected).every((key) => identity[key] === expected[key])
-      ? identity
-      : null
-  } catch {
+    const mismatched = Object.keys(expected).filter(
+      (key) => identity[key] !== expected[key],
+    )
+    if (mismatched.length)
+      probeTrace({ probe: 'identity-mismatch', port, host, fields: mismatched })
+    return mismatched.length ? null : identity
+  } catch (error) {
+    probeTrace({
+      probe: 'identity',
+      port,
+      host,
+      error: error.name,
+      cause: error.cause?.code,
+      causes: error.cause?.errors?.map((e) => e.code),
+    })
     return null
   }
 }

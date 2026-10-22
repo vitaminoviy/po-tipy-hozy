@@ -229,7 +229,7 @@ export const itemName = (item: Item) =>
     : catalog[item.kind].name
 export type WorldItem = Item & { y: number }
 export const DRAWER_TRAVEL = 0.28
-export function drawerSpecs(item: Item) {
+export function drawerSpecs(item: Pick<Item, 'kind'>) {
   return item.kind === 'cabinet'
     ? [0.3, 0.65, 1].map((y) => ({
         y,

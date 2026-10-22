@@ -53,7 +53,7 @@ body,
 }
 .app {
   position: relative;
-  height: 100dvh;
+  height: var(--game-height, 100dvh);
   min-height: 0;
   display: block;
   user-select: none;
@@ -367,4 +367,43 @@ body,
   border-radius: 8px;
   font-size: 12px;
   z-index: 10;
+}
+
+/* Host/device insets affect controls, never the geometry or camera proportions. */
+.house-menu {
+  top: calc(
+    12px + max(env(safe-area-inset-top, 0px), var(--game-safe-top, 0px))
+  );
+  right: calc(
+    12px + max(env(safe-area-inset-right, 0px), var(--game-safe-right, 0px))
+  );
+}
+.note-toggle,
+.owner-note {
+  left: max(env(safe-area-inset-left, 0px), var(--game-safe-left, 0px));
+}
+.owner-note {
+  width: min(
+    350px,
+    calc(
+      100vw - 48px - var(--game-safe-left, 0px) - var(--game-safe-right, 0px)
+    )
+  );
+  max-height: calc(
+    var(--game-height, 100dvh) - 32px - var(--game-safe-top, 0px) -
+      var(--game-safe-bottom, 0px)
+  );
+  overscroll-behavior: contain;
+}
+.note-toggle.open {
+  left: calc(
+    var(--game-safe-left, 0px) +
+      min(
+        350px,
+        calc(
+          100vw - 48px - var(--game-safe-left, 0px) -
+            var(--game-safe-right, 0px)
+        )
+      )
+  );
 }

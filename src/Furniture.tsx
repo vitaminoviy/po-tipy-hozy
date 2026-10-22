@@ -1,5 +1,5 @@
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import {
   Shape,
   Path,
@@ -158,7 +158,7 @@ function Model({
   binActive,
   binFeedbackAt,
 }: {
-  item: Item
+  item: Pick<Item, 'id' | 'kind' | 'lampOn'>
   interactive: boolean
   onInteract: (action: Interaction) => void
   drawerMotion: Map<string, number>
@@ -340,6 +340,21 @@ function Model({
     }
   }
 }
+// Model reads only identity/kind/lampOn from item. Position and orientation live
+// on the outer groups; drawers consume their shared animation map in useFrame.
+const StableModel = memo(
+  Model,
+  (a, b) =>
+    a.item.id === b.item.id &&
+    a.item.kind === b.item.kind &&
+    a.item.lampOn === b.item.lampOn &&
+    a.interactive === b.interactive &&
+    a.onInteract === b.onInteract &&
+    a.drawerMotion === b.drawerMotion &&
+    a.surfaceY === b.surfaceY &&
+    a.binActive === b.binActive &&
+    a.binFeedbackAt === b.binFeedbackAt,
+)
 function PlacementMarker({
   item,
   invalid = false,
@@ -442,6 +457,12 @@ export default function Furniture({
   binActive?: boolean
   binFeedbackAt?: number
 }) {
+  const interactRef = useRef(onInteract)
+  interactRef.current = onInteract
+  const interact = useCallback(
+    (action: Interaction) => interactRef.current(action),
+    [],
+  )
   return (
     <>
       {selected && <PlacementMarker item={item} invalid={invalid} />}
@@ -458,10 +479,10 @@ export default function Furniture({
             document.body.style.cursor = 'auto'
           }}
         >
-          <Model
+          <StableModel
             item={item}
             interactive={mode === 'interact'}
-            onInteract={onInteract}
+            onInteract={interact}
             drawerMotion={drawerMotion}
             surfaceY={surfaceY}
             binActive={binActive}

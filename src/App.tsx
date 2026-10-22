@@ -15,6 +15,7 @@ import {
   useMemo,
 } from 'react'
 import Scene from './Scene'
+import { connectPlatform } from './platform'
 import type { WorkTool } from './WorkTools'
 import { flushSync } from 'react-dom'
 import {
@@ -69,17 +70,6 @@ import {
   type PlacementSession,
 } from './placementSession'
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        ready: () => void
-        expand: () => void
-        disableVerticalSwipes?: () => void
-      }
-    }
-  }
-}
 export default function App({
   initialHistory,
   onWorldCommit,
@@ -572,10 +562,7 @@ export default function App({
     }
   }, [])
   useEffect(() => {
-    const webapp = window.Telegram?.WebApp
-    webapp?.ready()
-    webapp?.expand()
-    webapp?.disableVerticalSwipes?.()
+    return connectPlatform()
   }, [])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -924,7 +911,7 @@ export default function App({
           <button onClick={() => setHelp(!help)} aria-expanded={help}>
             Управление
           </button>
-          <p className="menu-version">Prototype 0.8 · Дополнительные команды</p>
+          <p className="menu-version">Prototype 0.9 · Дополнительные команды</p>
           <button onClick={onReset}>Начать заново</button>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">

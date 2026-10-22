@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Group, IcosahedronGeometry } from 'three'
 import { floorSupport } from './grounding'
@@ -11,15 +11,18 @@ import {
   type Disposal,
 } from './cleaning'
 
-const paperGeometry = new IcosahedronGeometry(0.12, 0)
-paperGeometry.computeBoundingBox()
-const paperY = -paperGeometry.boundingBox!.min.y
-function TrashModel({ kind }: { kind: Trash['kind'] }) {
+function TrashModel({
+  kind,
+  paperGeometry,
+}: {
+  kind: Trash['kind']
+  paperGeometry: IcosahedronGeometry
+}) {
   if (kind === 'paper')
     return (
       <mesh
         geometry={paperGeometry}
-        position={[0, paperY, 0]}
+        position={[0, -paperGeometry.boundingBox!.min.y, 0]}
         castShadow
         receiveShadow
       >
@@ -79,6 +82,7 @@ function TrashModel({ kind }: { kind: Trash['kind'] }) {
 }
 function TrashObject({
   trash,
+  paperGeometry,
   items,
   pending,
   enabled,
@@ -89,6 +93,7 @@ function TrashObject({
   onHint,
 }: {
   trash: Trash
+  paperGeometry: IcosahedronGeometry
   items: Item[]
   pending: Disposal | null
   enabled: boolean
@@ -166,7 +171,7 @@ function TrashObject({
           )
       }}
     >
-      <TrashModel kind={trash.kind} />
+      <TrashModel kind={trash.kind} paperGeometry={paperGeometry} />
       {!animated && (hover || trash.state === 'selected') && (
         <mesh
           position={[0, 0.003, 0]}
@@ -222,12 +227,21 @@ export default function Cleaning({
   quickEnabled: boolean
   onHint: (text: string) => void
 }) {
+  // Shared by papers in this scene only. A module-global uploaded geometry keeps
+  // renderer dispose listeners (and detached canvases) alive across new games.
+  const paperGeometry = useMemo(() => {
+    const geometry = new IcosahedronGeometry(0.12, 0)
+    geometry.computeBoundingBox()
+    return geometry
+  }, [])
+  useEffect(() => () => paperGeometry.dispose(), [paperGeometry])
   return (
     <group name="cleaning">
       {trash.map((t) => (
         <TrashObject
           key={t.id}
           trash={t}
+          paperGeometry={paperGeometry}
           items={items}
           pending={pending}
           enabled={enabled && !pending}
