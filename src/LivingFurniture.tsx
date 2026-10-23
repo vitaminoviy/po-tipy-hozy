@@ -27,7 +27,9 @@ export default function LivingFurniture({
         >
           <meshStandardMaterial
             color={c}
-            map={surface === 'linen' ? linen : oak}
+            map={
+              surface === 'linen' ? (kind === 'sofa' ? undefined : linen) : oak
+            }
             roughness={surface === 'linen' ? 0.96 : 0.72}
           />
         </mesh>

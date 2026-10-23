@@ -9,6 +9,25 @@ import {
 import { furnitureVolumes, softSurfaceZones } from '../src/placementGeometry'
 import { initialItems, catalog } from '../src/placement'
 
+test('sofa silhouette has flat box arms, four short feet and two backward-leaning cushions', () => {
+  const parts = livingParts('sofa', 0.015)
+  assert.equal(parts.filter((part) => part.roundFoot).length, 4)
+  assert.ok(!parts.some((part) => part.id === 'plinth'))
+  for (const arm of parts.filter((part) => part.id.startsWith('arm'))) {
+    assert.ok(arm.radius < arm.s[0] * 0.2)
+    assert.ok(arm.s[1] > 0.75)
+  }
+  const backs = parts.filter((part) => part.id.startsWith('back-cushion'))
+  assert.equal(backs.length, 2)
+  assert.ok(backs.every((part) => part.tilt! < 0 && part.s[2] >= 0.19))
+  for (const floor of [0.015, 0.045]) {
+    for (const foot of livingParts('sofa', floor).filter(
+      (part) => part.roundFoot,
+    ))
+      assert.ok(Math.abs(foot.p[1] - foot.s[1] / 2 - floor) < 1e-10)
+  }
+})
+
 for (const kind of ['sofa', 'chair', 'table'] as const) {
   test(`${kind}: detailed visual parts remain inside original collision volumes on floor and rugs`, () => {
     const item = initialItems.find((item) => item.kind === kind)!

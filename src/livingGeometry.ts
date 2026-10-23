@@ -8,6 +8,8 @@ export type LivingPart = BoxPart & {
   radius: number
   surface: 'linen' | 'oak'
   tapered?: boolean
+  roundFoot?: boolean
+  tilt?: number
 }
 
 // Visual subdivisions stay inside the existing collision primitives. Seat/top
@@ -39,10 +41,58 @@ export function livingParts(kind: LivingKind, floor: number): LivingPart[] {
       }
     return parts
   }
-  const sofa = kind === 'sofa'
-  const shell = sofa ? '#738671' : '#b5896d'
-  const cushion = sofa ? '#94a18b' : '#c9a084'
-  const welt = sofa ? '#83927b' : '#b68e72'
+  if (kind === 'sofa') {
+    const shell = '#899b80',
+      cushion = '#9bab91'
+    // A continuous upholstered box on four feet, rather than a dark plinth
+    // with separate bolster arms. All pieces remain in the old collision union.
+    for (const x of [-1.04, 1.04])
+      for (const z of [-0.39, 0.39]) {
+        add(
+          `foot-${x}-${z}`,
+          [x, (floor + 0.25) / 2, z],
+          [0.14, 0.25 - floor, 0.14],
+          '#a78258',
+          0,
+          'oak',
+        )
+        parts[parts.length - 1].roundFoot = true
+      }
+    add('upholstered-base', [0, 0.41, 0], [2.44, 0.38, 1.06], shell, 0.045)
+    for (const x of [-1.1, 1.1])
+      add(`arm-${x}`, [x, 0.625, 0.06], [0.26, 0.81, 0.94], shell, 0.045)
+    add('back-shell', [0, 0.94, -0.515], [2.46, 0.78, 0.07], shell, 0.025)
+    for (const x of [-0.53, 0.53]) {
+      add(
+        `back-cushion-${x}`,
+        [x, 1.035, -0.43],
+        [1.03, 0.6, 0.19],
+        cushion,
+        0.065,
+      )
+      parts[parts.length - 1].tilt = -0.07
+    }
+    for (const part of partsOnSurface(kind, floor)) {
+      if (part.id.startsWith('seat')) {
+        const top = part.p[1] + part.s[1] / 2
+        add(
+          part.id,
+          [part.p[0], top - 0.14, part.p[2]],
+          [part.s[0], 0.28, part.s[2]],
+          cushion,
+          0.065,
+        )
+      } else if (part.id === 'pillow') {
+        // Keep the existing small pillow and its occupied space for saved props.
+        add(part.id, part.p, part.s, '#b5bda2', 0.07)
+      }
+    }
+    return parts
+  }
+  // The chair keeps its Visual 1.1 dimensions and materials.
+  const shell = '#b5896d'
+  const cushion = '#c9a084'
+  const welt = '#b68e72'
   for (const part of partsOnSurface(kind, floor)) {
     const { id, p, s } = part
     if (id === 'base') {
@@ -72,11 +122,11 @@ export function livingParts(kind: LivingKind, floor: number): LivingPart[] {
         shell,
         0.03,
       )
-      for (const x of sofa ? [-0.62, 0.62] : [0])
+      for (const x of [0])
         add(
           `back-cushion-${x}`,
           [x, p[1] + 0.005, p[2] + 0.035],
-          [sofa ? 1.2 : 0.94, s[1] - 0.035, 0.17],
+          [0.94, s[1] - 0.035, 0.17],
           cushion,
           0.08,
         )
@@ -93,7 +143,7 @@ export function livingParts(kind: LivingKind, floor: number): LivingPart[] {
         0.005,
       )
     } else if (id.startsWith('arm')) {
-      add(id, p, s, shell, sofa ? 0.13 : 0.065)
+      add(id, p, s, shell, 0.065)
     } else {
       add(id, p, s, '#ddd0b5', 0.08)
     }
@@ -103,7 +153,14 @@ export function livingParts(kind: LivingKind, floor: number): LivingPart[] {
 
 export function livingPartGeometry(part: LivingPart): BufferGeometry {
   let geometry: BufferGeometry
-  if (part.tapered) {
+  if (part.roundFoot) {
+    geometry = new CylinderGeometry(
+      part.s[0] / 2,
+      part.s[0] * 0.36,
+      part.s[1],
+      8,
+    )
+  } else if (part.tapered) {
     geometry = new CylinderGeometry(
       0.09 / Math.SQRT2,
       0.055 / Math.SQRT2,
@@ -118,6 +175,7 @@ export function livingPartGeometry(part: LivingPart): BufferGeometry {
       Math.min(part.radius, Math.min(...part.s) * 0.49),
     )
   }
+  if (part.tilt) geometry.rotateX(part.tilt)
   geometry.translate(...part.p)
   if (!geometry.index) return geometry
   const flat = geometry.toNonIndexed()
