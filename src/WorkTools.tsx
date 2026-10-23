@@ -44,7 +44,13 @@ export default function WorkTools({
   })
   return (
     <group>
-      <Box p={[...workArea.position]} s={[...workArea.size]} c="#c6bea8" />
+      <Box
+        p={[...workArea.position]}
+        s={[...workArea.size]}
+        c="#c6bea8"
+        radius={0.025}
+        surface="wood"
+      />
       {(['roller', 'sponge'] as const).map((id) => (
         <group
           key={id}
@@ -70,10 +76,22 @@ export default function WorkTools({
                 <meshStandardMaterial color={paintColors[color].hex} />
               </mesh>
               <Box p={[0.3, 0.09, 0.18]} s={[0.035, 0.035, 0.35]} c="#a8a89b" />
-              <Box p={[0.3, 0.09, 0.37]} s={[0.11, 0.1, 0.25]} c="#b89468" />
+              <Box
+                p={[0.3, 0.09, 0.37]}
+                s={[0.11, 0.1, 0.25]}
+                c="#b89468"
+                radius={0.025}
+                surface="wood"
+              />
             </group>
           ) : (
-            <Box p={[0, 0.08, 0]} s={[0.55, 0.16, 0.38]} c="#cbbf88" />
+            <Box
+              p={[0, 0.08, 0]}
+              s={[0.55, 0.16, 0.38]}
+              c="#d5c99a"
+              radius={0.045}
+              surface="fabric"
+            />
           )}
           <mesh position={[0, 0.1, 0]}>
             <boxGeometry args={[0.9, 0.45, 0.8]} />
@@ -90,7 +108,11 @@ export default function WorkTools({
         >
           <mesh>
             <cylinderGeometry args={[0.24, 0.22, 0.36, 20]} />
-            <meshStandardMaterial color="#b9b9aa" />
+            <meshStandardMaterial
+              color="#c1c0b7"
+              metalness={0.45}
+              roughness={0.38}
+            />
           </mesh>
           <mesh position={[0, 0.19, 0]}>
             <cylinderGeometry args={[0.225, 0.225, 0.035, 20]} />
@@ -110,6 +132,8 @@ export default function WorkTools({
         p={[...floorSampleArea.position]}
         s={[...floorSampleArea.size]}
         c="#c6bea8"
+        radius={0.025}
+        surface="wood"
       />
       {(Object.keys(floorMaterials) as FloorMaterial[]).map((id) => (
         <group
@@ -136,6 +160,8 @@ export default function WorkTools({
                 ]}
                 s={[0.325, 0.025, 0.14]}
                 c={floorMaterials[id].colors[i % 3]}
+                radius={0.004}
+                surface="plain"
               />
             ) : (
               <Box
@@ -143,6 +169,8 @@ export default function WorkTools({
                 p={[0, 0.025, (i - 1) * 0.1]}
                 s={[0.7, 0.025, 0.09]}
                 c={floorMaterials[id].colors[i % 3]}
+                radius={0.004}
+                surface="wood"
               />
             ),
           )}

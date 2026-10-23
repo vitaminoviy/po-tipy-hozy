@@ -911,7 +911,9 @@ export default function App({
           <button onClick={() => setHelp(!help)} aria-expanded={help}>
             Управление
           </button>
-          <p className="menu-version">Prototype 0.9 · Дополнительные команды</p>
+          <p className="menu-version">
+            Visual Foundation 1.0 · Дополнительные команды
+          </p>
           <button onClick={onReset}>Начать заново</button>
           <div className="interaction-tools">
             <div role="group" aria-label="Режим работы">

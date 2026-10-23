@@ -1,3 +1,4 @@
+import { VisualMaterials } from './visualMaterials'
 import FloorScene from './FloorScene'
 import { floorMaterials, type FloorState, type FloorMaterial } from './flooring'
 import type { Room } from './cleaning'
@@ -11,7 +12,7 @@ import {
 } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { MOUSE, Plane, Vector2, Vector3, Group } from 'three'
+import { PCFShadowMap, MOUSE, Plane, Vector2, Vector3, Group } from 'three'
 import House from './House'
 import WorkTools, { type WorkTool } from './WorkTools'
 import { supportHeight, FLOOR_TOP } from './grounding'
@@ -634,18 +635,20 @@ function Interior(p: Props) {
     : p.items
   return (
     <>
-      <ambientLight intensity={0.45} />
-      <hemisphereLight args={['#fff0d9', '#6c8066', 0.9]} />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={['#edf3ff', '#c7b498', 1.05]} />
       <directionalLight
-        position={[-3, 10, 4]}
-        intensity={2.6}
+        position={[-3, 9, -6]}
+        intensity={2.3}
+        color="#fff0d8"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-9}
         shadow-camera-right={9}
         shadow-camera-top={8}
         shadow-camera-bottom={-8}
-        shadow-normalBias={0.04}
+        shadow-normalBias={0.025}
+        shadow-radius={3}
       />
       <House walls={p.walls} />
       <WorkTools
@@ -786,7 +789,7 @@ export default function Scene(p: Props) {
   return (
     <Canvas
       orthographic
-      shadows
+      shadows={{ type: PCFShadowMap }}
       dpr={[1, 1.75]}
       camera={{ position: [12, 11, 15], zoom: 46, near: 0.1, far: 250 }}
       onPointerMissed={(e) => {
@@ -798,7 +801,9 @@ export default function Scene(p: Props) {
         <div className="fallback">Для 3D-сцены нужен браузер с WebGL.</div>
       }
     >
-      <Interior {...p} />
+      <VisualMaterials>
+        <Interior {...p} />
+      </VisualMaterials>
     </Canvas>
   )
 }

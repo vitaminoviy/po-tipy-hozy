@@ -277,9 +277,16 @@ test('preview crosses the old snap threshold continuously and stays still when t
   const stopped = await capture()
   for (let i = 0; i < 3; i++)
     expect(await imageDifference(page, stopped, await capture())).toBe(0)
+  // Move foreground furniture clear of the floor sample: the blue book on the
+  // table otherwise intersects the bottom of this crop after the visual update.
+  // Keep the original crop and zero-pixel assertion to catch a real old marker.
+  const clearSample = await project(page, -1.42, 0.59, 2)
+  await page.mouse.move(clearSample.x, clearSample.y)
+  await expect(page.getByTestId('pose')).toContainText('Z 2.00')
   // The old marker's blue-grey tint is absent around the original table footprint.
   const source = await project(page, -2.8, 0, -0.4)
   const crop = await page.screenshot({
+    path: 'artifacts/visual-marker-crop.png',
     clip: { x: source.x - 50, y: source.y - 25, width: 100, height: 50 },
   })
   const bluePixels = await page.evaluate(async (bytes) => {

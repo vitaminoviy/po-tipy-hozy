@@ -1,5 +1,7 @@
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { useSurface } from './visualMaterials'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   Shape,
   Path,
@@ -20,24 +22,55 @@ import {
 import { catalog, drawerSpecs } from './placement'
 import { approach, type Interaction, type Mode } from './history'
 
-export function Box({
+function BoxModel({
   p,
   s,
   c,
+  radius = 0,
+  surface = 'plain',
   ...rest
 }: {
   p: [number, number, number]
   s: [number, number, number]
   c: string
+  radius?: number
+  surface?: 'wood' | 'fabric' | 'plain'
   castShadow?: boolean
 }) {
+  const map = useSurface(surface)
+  const geometry = useMemo(
+    () =>
+      radius > 0
+        ? new RoundedBoxGeometry(...s, 2, Math.min(radius, Math.min(...s) / 3))
+        : null,
+    [s[0], s[1], s[2], radius],
+  )
+  useEffect(() => () => geometry?.dispose(), [geometry])
   return (
     <mesh position={p} castShadow receiveShadow {...rest}>
-      <boxGeometry args={s} />
-      <meshStandardMaterial color={c} roughness={0.85} />
+      {geometry ? (
+        <primitive object={geometry} attach="geometry" />
+      ) : (
+        <boxGeometry args={s} />
+      )}
+      <meshStandardMaterial
+        color={c}
+        map={map}
+        roughness={surface === 'wood' ? 0.64 : 0.92}
+      />
     </mesh>
   )
 }
+export const Box = memo(
+  BoxModel,
+  (a, b) =>
+    a.c === b.c &&
+    a.radius === b.radius &&
+    a.surface === b.surface &&
+    a.castShadow === b.castShadow &&
+    a.p.every((v, i) => v === b.p[i]) &&
+    a.s.every((v, i) => v === b.s[i]),
+)
 function Leg({ x, z, h = 0.4 }: { x: number; z: number; h?: number }) {
   return <Box p={[x, h / 2, z]} s={[0.09, h, 0.09]} c="#73583d" />
 }
@@ -183,12 +216,27 @@ function Model({
     case 'chair':
     case 'bed':
       return partsOnSurface(kind, surfaceY).map(({ id, ...part }) => (
-        <Box key={id} {...part} />
+        <Box
+          key={id}
+          {...part}
+          radius={id === 'base' || id === 'headboard' ? 0.025 : 0.06}
+          surface={
+            kind === 'bed' && (id === 'base' || id === 'headboard')
+              ? 'wood'
+              : 'fabric'
+          }
+        />
       ))
     case 'table':
       return (
         <>
-          <Box p={[0, 0.53, 0]} s={[1.35, 0.13, 0.85]} c={wood} />
+          <Box
+            p={[0, 0.53, 0]}
+            s={[1.35, 0.13, 0.85]}
+            c={wood}
+            radius={0.025}
+            surface="wood"
+          />
           {[-0.5, 0.5].flatMap((x) =>
             [-0.28, 0.28].map((z) => (
               <Leg key={`${x}${z}`} x={x} z={z} h={0.5} />
@@ -324,6 +372,7 @@ function Model({
             p={[0, y, 0]}
             s={[w, RUG_THICKNESS, d]}
             c={catalog[kind].color}
+            surface="fabric"
             castShadow={false}
           />
           {[-1, 1].map((side) => (

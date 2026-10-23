@@ -8,31 +8,56 @@ function WindowWall({ x, color }: { x: number; color: string }) {
       {[-1.8, 1.8].map((dx) => (
         <Box key={dx} p={[x + dx, 1.8, -3.5]} s={[1.4, 1.4, 0.18]} c={color} />
       ))}
-      <Box p={[x, 1.8, -3.52]} s={[2.2, 1.4, 0.06]} c="#b9d3cf" />
+      <Box
+        p={[x, 1.8, -3.52]}
+        s={[2.2, 1.4, 0.06]}
+        c="#b9d3cf"
+        castShadow={false}
+      />
       {[-1.1, 0, 1.1].map((dx) => (
         <Box
           key={dx}
           p={[x + dx, 1.8, -3.38]}
           s={[0.07, 1.5, 0.12]}
           c="#faf1dc"
+          radius={0.012}
         />
       ))}
       {[1.08, 1.8, 2.52].map((y) => (
-        <Box key={y} p={[x, y, -3.38]} s={[2.3, 0.07, 0.12]} c="#faf1dc" />
+        <Box
+          key={y}
+          p={[x, y, -3.38]}
+          s={[2.3, 0.07, 0.12]}
+          c="#faf1dc"
+          radius={0.012}
+        />
       ))}
-      <Box p={[x, 1.06, -3.25]} s={[2.5, 0.1, 0.38]} c="#e8dcc4" />
+      <Box
+        p={[x, 1.06, -3.25]}
+        s={[2.5, 0.1, 0.38]}
+        c="#e8dcc4"
+        radius={0.02}
+        surface="wood"
+      />
     </group>
   )
 }
 export default function House({ walls }: { walls: boolean }) {
   return (
     <group>
-      <Box p={[0, -0.25, 0]} s={[10.5, 0.45, 7.5]} c="#c7baa1" />
+      <Box
+        p={[0, -0.25, 0]}
+        s={[10.5, 0.45, 7.5]}
+        c="#cabda8"
+        radius={0.065}
+        surface="wood"
+      />
       {Array.from({ length: 28 }, (_, i) => (
         <Box
           key={i}
           p={[0, -0.015, -3.375 + i * 0.25]}
           s={[10, 0.06, 0.238]}
+          surface="wood"
           c={i % 3 === 0 ? '#bc9165' : i % 3 === 1 ? '#d0a77a' : '#c69a6c'}
         />
       ))}
@@ -65,14 +90,19 @@ export default function House({ walls }: { walls: boolean }) {
           <Box p={[0, 0.035, 0]} s={[0.18, 0.05, 7]} c="#aaa78e" />
         </>
       )}
-      <Box p={[2.4, -0.12, 3.9]} s={[2, 0.18, 0.7]} c="#b7b39c" />
+      <Box
+        p={[2.4, -0.12, 3.9]}
+        s={[2, 0.18, 0.7]}
+        c="#c8bda8"
+        radius={0.025}
+      />
       <mesh
         receiveShadow
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.49, 0]}
       >
         <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#dfe4d7" />
+        <meshStandardMaterial color="#e8e1d6" roughness={1} />
       </mesh>
     </group>
   )
