@@ -12,6 +12,7 @@ import {
 } from 'three'
 import type { Item, WorldItem } from './placement'
 import { partsOnSurface } from './furnitureGeometry'
+import LivingFurniture from './LivingFurniture'
 import BinModel from './BinModel'
 import {
   FLOOR_TOP,
@@ -214,6 +215,8 @@ function Model({
       )
     case 'sofa':
     case 'chair':
+    case 'table':
+      return <LivingFurniture kind={kind} floor={surfaceY} />
     case 'bed':
       return partsOnSurface(kind, surfaceY).map(({ id, ...part }) => (
         <Box
@@ -227,23 +230,6 @@ function Model({
           }
         />
       ))
-    case 'table':
-      return (
-        <>
-          <Box
-            p={[0, 0.53, 0]}
-            s={[1.35, 0.13, 0.85]}
-            c={wood}
-            radius={0.025}
-            surface="wood"
-          />
-          {[-0.5, 0.5].flatMap((x) =>
-            [-0.28, 0.28].map((z) => (
-              <Leg key={`${x}${z}`} x={x} z={z} h={0.5} />
-            )),
-          )}
-        </>
-      )
     case 'cabinet':
       return (
         <>
