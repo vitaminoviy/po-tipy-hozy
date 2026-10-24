@@ -2,6 +2,7 @@
 No downloaded assets. Blender Z-up, front -Y; glTF exporter converts to Y-up.
 """
 import bpy, math, json, sys
+import numpy as np
 from pathlib import Path
 from mathutils import Vector
 
@@ -23,6 +24,7 @@ scene.render.film_transparent = False
 scene.view_settings.view_transform = 'AgX'
 scene.render.threads_mode = 'FIXED'
 scene.render.threads = 6
+scene.eevee.taa_render_samples = 128
 
 def material(name, rgb, roughness):
     m = bpy.data.materials.new(name)
@@ -75,14 +77,14 @@ def skin(name, size, location, radius, mode='frame', phase=0, n=12):
                         fy = max(0, 1-(y/half[1])**2)
                         fz = max(0, 1-(z/half[2])**2)
                         if mode == 'seat':
-                            p.z += .032*fx*fy*max(0,z/half[2])
-                            p.z -= .008*math.exp(-((x-.07)/.24)**2-((y+.04)/.25)**2)*max(0,z/half[2])
+                            p.z += .018*fx*fy*max(0,z/half[2])
+                            p.z -= .005*math.exp(-((x-.07)/.24)**2-((y+.04)/.25)**2)*max(0,z/half[2])
                             p.y += .006*math.sin(x*8+phase)*fz*fy
                         elif mode == 'back':
                             front = max(0,-y/half[1])
-                            p.y -= .035*fx*fz*front
+                            p.y -= .022*fx*fz*front
                             # Upholstery tension around a shallow central tuft.
-                            dip = .035*math.exp(-((x-.025*phase)/.09)**2-((z+.025)/.08)**2)
+                            dip = .017*math.exp(-((x-.025*phase)/.115)**2-((z+.025)/.10)**2)
                             p.y += dip*front
                             p.x *= 1-.035*(z/half[2])
                             p.z += .006*math.sin(x*7+phase)*fx*fz
@@ -116,10 +118,10 @@ def skin(name, size, location, radius, mode='frame', phase=0, n=12):
 
 # Unioned, continuous upholstered frame: front rail, broad arms, rear shell.
 frame_parts = [
-    skin('Front rail', (2.45,1.04,.32), (0,0,.39), .065),
-    skin('Left upholstered side', (.30,1.08,.78), (-1.085,0,.65), .055),
-    skin('Right upholstered side', (.30,1.08,.78), (1.085,0,.65), .055),
-    skin('Rear upholstered shell', (2.42,.20,.94), (0,.43,.83), .055),
+    skin('Front rail', (2.45,1.04,.30), (0,0,.31), .065),
+    skin('Left upholstered side', (.30,1.08,.72), (-1.085,0,.52), .055),
+    skin('Right upholstered side', (.30,1.08,.72), (1.085,0,.52), .055),
+    skin('Rear upholstered shell', (2.42,.20,.91), (0,.43,.615), .055),
 ]
 bpy.ops.object.select_all(action='DESELECT')
 for obj in frame_parts:
@@ -144,19 +146,19 @@ for face in frame.data.polygons:
 frame.select_set(False)
 
 for i,x in enumerate((-.50,.50)):
-    seat = skin(f'Seat cushion {i+1}', (.975,.81,.27), (x,-.075,.685), .105, 'seat', i, 12)
-    seat.rotation_euler.z = (-1 if i==0 else 1)*.006
+    seat = skin(f'Seat cushion {i+1}', (1.005,.82,.22), (x,-.075,.565), .080, 'seat', i, 12)
+    seat.rotation_euler.z = (-1 if i==0 else 1)*.003
     sub = seat.modifiers.new('Soft cushion limit surface', 'SUBSURF')
     sub.levels = sub.render_levels = 1
-    back = skin(f'Back cushion {i+1}', (.98,.245,.59), (x,.285,1.02), .105, 'back', i, 12)
-    back.rotation_euler.x = -.14
+    back = skin(f'Back cushion {i+1}', (1.005,.24,.55), (x,.20,.835), .085, 'back', i, 12)
+    back.rotation_euler.x = -.17 + i*.012
     back.rotation_euler.y = (-1 if i==0 else 1)*.012
     sub = back.modifiers.new('Soft cushion limit surface', 'SUBSURF')
     sub.levels = sub.render_levels = 1
 
 for x in (-1.04,1.04):
     for y in (-.39,.39):
-        bpy.ops.mesh.primitive_cone_add(vertices=16, radius1=.061, radius2=.08, depth=.245, location=(x,y,.1225))
+        bpy.ops.mesh.primitive_cone_add(vertices=16, radius1=.055, radius2=.073, depth=.175, location=(x,y,.0875))
         foot = bpy.context.object
         foot.name = f'Ash foot {x:+.2f} {y:+.2f}'
         collect(foot,asset)
@@ -175,6 +177,42 @@ root['status'] = 'Standalone art candidate, not integrated'
 for obj in list(asset.objects):
     if obj != root:
         obj.parent = root
+
+# A tiny portable tangent-space normal image; no Blender-only procedural nodes.
+# UVs and normal map survive glTF export. Keep the weave below silhouette scale.
+(OUT/'textures').mkdir(exist_ok=True)
+size = 512
+yy, xx = np.mgrid[0:size, 0:size]
+nx = .10*np.sin(2*np.pi*xx/8)*(.8+.2*np.cos(2*np.pi*yy/8))
+ny = .10*np.sin(2*np.pi*yy/8)*(.8+.2*np.cos(2*np.pi*xx/8))
+nz = np.sqrt(1-nx*nx-ny*ny)
+pixels = np.stack((nx*.5+.5, ny*.5+.5, nz*.5+.5, np.ones_like(nx)), axis=-1)
+weave = bpy.data.images.new('Fine upholstery weave normal', width=size, height=size, alpha=False)
+weave.colorspace_settings.name = 'Non-Color'
+weave.pixels.foreach_set(pixels.astype(np.float32).ravel())
+weave.filepath_raw = str(OUT/'textures/fabric-normal.png')
+weave.file_format = 'PNG'
+weave.save()
+weave.pack()
+nodes = fabric.node_tree.nodes
+image_node = nodes.new('ShaderNodeTexImage')
+image_node.image = weave
+normal = nodes.new('ShaderNodeNormalMap')
+normal.inputs['Strength'].default_value = .35
+fabric.node_tree.links.new(image_node.outputs['Color'], normal.inputs['Color'])
+fabric.node_tree.links.new(normal.outputs['Normal'], nodes.get('Principled BSDF').inputs['Normal'])
+for obj in asset.objects:
+    if obj.type != 'MESH' or fabric not in list(obj.data.materials):
+        continue
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(island_margin=.02)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for loop in obj.data.uv_layers.active.data:
+        loop.uv *= 8
 
 bpy.ops.mesh.primitive_plane_add(size=200)
 floor = bpy.context.object
@@ -216,11 +254,6 @@ def set_view(name):
 set_view('isometric')
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'blender/quiet-home-sofa.blend'))
 
-bpy.ops.object.select_all(action='DESELECT')
-for obj in asset.objects:
-    obj.select_set(True)
-bpy.ops.export_scene.gltf(filepath=str(OUT/'export/quiet-home-sofa.glb'), export_format='GLB', use_selection=True, export_apply=True, export_extras=True)
-
 depsgraph = bpy.context.evaluated_depsgraph_get()
 triangles = 0
 bounds = []
@@ -232,15 +265,18 @@ for obj in asset.objects:
     triangles += len(mesh.loop_triangles)
     bounds.extend([tuple(obj.matrix_world @ v.co) for v in mesh.vertices])
     evaluated.to_mesh_clear()
-report = {'blender':bpy.app.version_string,'triangles':triangles,'materials':2,'textures':0,
+report = {'blender':bpy.app.version_string,'triangles':triangles,'materials':2,'textures':1,
           'bounds_blender':[[min(p[i] for p in bounds) for i in range(3)],[max(p[i] for p in bounds) for i in range(3)]],
           'render_engine':scene.render.engine,'resolution':[1100,850]}
 (OUT/'export/metrics.json').write_text(json.dumps(report,indent=2))
 print('ASSET_METRICS',json.dumps(report),flush=True)
 draft = '--draft' in sys.argv
-for name in (['isometric'] if draft else views):
+for name in (['isometric'] if draft else []):
     set_view(name)
     scene.render.resolution_percentage = 65 if draft else 100
     scene.render.filepath = str(OUT/'previews'/f'{name}.png')
     bpy.ops.render.render(write_still=True)
 print('SOFA_COMPLETE',flush=True)
+if not draft:
+    import runpy
+    runpy.run_path(str(ROOT/'scripts/blender/finalize_sofa.py'), run_name='__main__')
