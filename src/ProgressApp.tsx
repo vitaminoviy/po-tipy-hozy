@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import App from './App'
+import MainMenu from './MainMenu'
 import { createHistory, type History } from './history'
 import { captureWorld, restoreWorld } from './saveModel'
 import { IndexedProgressStorage, SaveQueue, validRevision } from './saveStorage'
@@ -8,6 +9,8 @@ const storage = new IndexedProgressStorage()
 const describe = (error: unknown) =>
   error instanceof Error ? error.message : 'Ошибка хранилища браузера'
 export default function ProgressApp() {
+  const [started, setStarted] = useState(false)
+  const [hasSave, setHasSave] = useState(false)
   const [loaded, setLoaded] = useState<{
     history: History
     generation: number
@@ -41,6 +44,7 @@ export default function ProgressApp() {
             ? restoreWorld(record.world)
             : createHistory()
         writable.current = true
+        setHasSave(!!record?.world)
         setLoaded({ history, generation: 0 })
         setStatus('saved')
       })
@@ -78,12 +82,12 @@ export default function ProgressApp() {
         'Начать заново? Весь локальный прогресс этого дома будет удалён.',
       )
     )
-      return
+      return false
     if (!queue.current && !corruptRevision.current) {
       setError(
         'Хранилище недоступно. Прогресс не удалён. Обновите страницу и повторите.',
       )
-      return
+      return false
     }
     setStatus('saving')
     writable.current = false
@@ -103,25 +107,57 @@ export default function ProgressApp() {
         generation: (v?.generation ?? 0) + 1,
       }))
       setStatus('saved')
+      setHasSave(false)
+      return true
     } catch (e) {
       setStatus('error')
       setError(`Прогресс не удалён: ${describe(e)}`)
+      return false
     }
   }
-  if (!loaded)
-    return (
-      <div className="fallback" role="status">
-        Загрузка дома…
-      </div>
-    )
   return (
-    <>
-      <App
-        key={loaded.generation}
-        initialHistory={loaded.history}
-        onWorldCommit={commit}
-        onReset={reset}
-      />
+    <MainMenu
+      hasSave={hasSave}
+      available={!!loaded && status !== 'error'}
+      error={error}
+      onStart={async (fresh) => {
+        if (!loaded || !writable.current) return false
+        if (
+          fresh &&
+          hasSave &&
+          !window.confirm(
+            'Начать новую игру? Текущий локальный прогресс будет заменён.',
+          )
+        )
+          return false
+        if (fresh) {
+          try {
+            // Replace atomically: a failed write must retain the old save.
+            await queue.current!.write(captureWorld(createHistory()), hasSave)
+            setLoaded((v) => ({
+              history: createHistory(),
+              generation: (v?.generation ?? 0) + 1,
+            }))
+            setHasSave(true)
+          } catch (e) {
+            writable.current = false
+            setStatus('error')
+            setError(`Не удалось начать игру: ${describe(e)}`)
+            return false
+          }
+        }
+        setStarted(true)
+        return true
+      }}
+    >
+      {started && loaded && (
+        <App
+          key={loaded.generation}
+          initialHistory={loaded.history}
+          onWorldCommit={commit}
+          onReset={reset}
+        />
+      )}
       <span hidden data-testid="save-status" data-status={status} />
       {error && (
         <div className="save-error" role="alert">
@@ -129,6 +165,6 @@ export default function ProgressApp() {
           {!writable.current && 'Изменения в этой вкладке не сохраняются.'}
         </div>
       )}
-    </>
+    </MainMenu>
   )
 }
