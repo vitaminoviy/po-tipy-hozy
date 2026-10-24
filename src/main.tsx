@@ -1,6 +1,7 @@
 import React, { Component, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import ProgressApp from './ProgressApp'
+import StartupSplash from './StartupSplash'
 import './style.css'
 
 class ErrorBoundary extends Component<
@@ -25,8 +26,10 @@ class ErrorBoundary extends Component<
 }
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <ProgressApp />
-    </ErrorBoundary>
+    <StartupSplash>
+      <ErrorBoundary>
+        <ProgressApp />
+      </ErrorBoundary>
+    </StartupSplash>
   </React.StrictMode>,
 )
