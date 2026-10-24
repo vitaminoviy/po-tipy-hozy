@@ -22,10 +22,22 @@ native dialog, Escape и восстановление фокуса. Exit не п
 
 > Edit this image into a clean game main menu background plate. Remove ALL lettering: Quiet Home, Play, Continue, Settings, Credits, Exit, decorative flourishes and divider lines. Seamlessly restore the dark wooden shelves and workshop behind those letters. Preserve the original entire composition, miniature illuminated house at right, sunset window, warm lighting, plants, desk, depth of field, and dark left space. No new text, no logos, no UI. Keep wide 16:9 composition. Save output as a local image for game integration.
 
-Движение: медленный CSS transform фонового слоя, изменение прозрачности тёплого
-света и девять небольших частиц. Анимации отключаются через Settings либо системное
+Движение: медленный CSS transform общей сцены, восемь локальных световых пятен
+с разными периодами 6–11,6 с, луч лампы, три покачивающиеся передние веточки
+и 15 частиц двух размеров с периодами 18/23 с. SVG-слои привязаны к координатам
+1672×941 и масштабируются/обрезаются вместе с иллюстрацией. Дополнительные веточки
+созданы векторно, исходная листва на растровом фоне не деформируется.
+New Game подтверждается собственным оформленным dialog; фокус на «Отмена»,
+Escape отменяет действие, Tab остаётся внутри окна, затем фокус возвращается
+к New Game. Системный confirm главного меню удалён. Запись остаётся атомарной.
+Анимации отключаются через Settings либо системное
 prefers-reduced-motion. Фон — иллюстрация, не отдельная интерактивная 3D-комната.
 Реальные телефоны и Telegram WebView пока не проверены.
+
+Короткий desktop-прогон в изолированном Chromium при записи WebM, 1280×720:
+460 интервалов после прогрева, средний 16,67 мс, P95 16,8 мс. Canvas в меню — 0.
+Это проверка текущей версии, не сравнительное доказательство ускорения.
+Запись движения: artifacts/menu/living-menu.webm.
 
 Проверки: tests/e2e/main-menu.spec.ts — запуск, hover, Settings/Credits/Exit,
 New Game, Continue, подтверждение/отмена сброса, ошибка записи, delayed GLB,

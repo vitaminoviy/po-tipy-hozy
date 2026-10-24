@@ -122,14 +122,7 @@ export default function ProgressApp() {
       error={error}
       onStart={async (fresh) => {
         if (!loaded || !writable.current) return false
-        if (
-          fresh &&
-          hasSave &&
-          !window.confirm(
-            'Начать новую игру? Текущий локальный прогресс будет заменён.',
-          )
-        )
-          return false
+        // MainMenu obtains confirmation before requesting a replacement.
         if (fresh) {
           try {
             // Replace atomically: a failed write must retain the old save.

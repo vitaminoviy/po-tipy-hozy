@@ -5,6 +5,10 @@ test('menu, decoration, panels, new game, persisted continue and reset confirmat
 }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
+  page.on('dialog', async (d) => {
+    errors.push('Unexpected browser dialog')
+    await d.dismiss()
+  })
   await page.goto('/')
   const menu = page.getByRole('region', { name: 'Главное меню' })
   await expect(menu).toBeVisible()
@@ -47,14 +51,26 @@ test('menu, decoration, panels, new game, persisted continue and reset confirmat
   await expect(
     page.getByRole('button', { name: 'Continue', exact: true }),
   ).toBeEnabled()
-  page.once('dialog', (d) => d.dismiss())
   await page.getByRole('button', { name: 'New Game', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: 'New Game', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText(
+    'Текущий локальный прогресс',
+  )
+  await expect(page.getByRole('dialog')).toHaveCSS('opacity', '1')
+  await page.screenshot({ path: 'artifacts/menu/confirmation.png' })
+  await expect(
+    page.getByRole('button', { name: 'Отмена', exact: true }),
+  ).toBeFocused()
+  await page.getByRole('button', { name: 'Отмена', exact: true }).click()
+  await expect(start).toBeFocused()
   await expect(menu).toBeVisible()
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(menu).toHaveCount(0, { timeout: 15000 })
   await page.reload()
-  page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: 'New Game', exact: true }).click()
+  await page.getByRole('button', { name: 'Начать новую', exact: true }).click()
   await expect(menu).toHaveCount(0, { timeout: 15000 })
   expect(errors).toEqual([])
 })
@@ -148,8 +164,8 @@ test('failed New Game preserves the existing save and Continue never overwrites 
       throw new DOMException('Test storage full', 'QuotaExceededError')
     }
   })
-  page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: 'New Game', exact: true }).click()
+  await page.getByRole('button', { name: 'Начать новую', exact: true }).click()
   await expect(page.locator('.menu-error')).toContainText(
     'Не удалось начать игру',
   )
@@ -158,4 +174,42 @@ test('failed New Game preserves the existing save and Continue never overwrites 
   ).toBeDisabled()
   await expect(page.locator('.main-menu')).toBeVisible()
   expect(await read()).toBe(before)
+})
+
+test('living layers move independently and stop with reduced motion', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(
+    page.getByRole('button', { name: 'New Game', exact: true }),
+  ).toBeEnabled()
+  const sample = () =>
+    page.evaluate(() =>
+      [
+        '.menu-window-glow',
+        '.menu-lamp-beam',
+        '.menu-vine',
+        '.menu-landscape',
+        '.menu-dust i',
+      ].map((s) => {
+        const e = document.querySelector(s)!
+        const c = getComputedStyle(e)
+        return [c.opacity, c.transform]
+      }),
+    )
+  const first = await sample()
+  await page.waitForTimeout(1700)
+  const second = await sample()
+  for (let i = 0; i < first.length; i++) expect(second[i]).not.toEqual(first[i])
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  expect(
+    await page
+      .locator('.main-menu')
+      .evaluate(
+        (e) =>
+          e
+            .getAnimations({ subtree: true })
+            .filter((a) => a.playState === 'running').length,
+      ),
+  ).toBe(0)
 })
