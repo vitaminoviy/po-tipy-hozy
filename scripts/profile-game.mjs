@@ -7,6 +7,7 @@ import { soakGame } from './soak-game.mjs'
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 const label = process.argv[2] ?? 'baseline'
+const sofa = process.argv.includes('--sofa')
 const refIndex = process.argv.indexOf('--ref'),
   ref = refIndex < 0 ? null : process.argv[refIndex + 1]
 if (ref && !/^[0-9a-f]{7,40}$/.test(ref))
@@ -113,7 +114,10 @@ try {
     await page.getByRole('button', { name: 'Перемещение', exact: true }).click()
     await page.getByRole('button', { name: 'Скрыть стены' }).click()
     await page
-      .getByRole('button', { name: 'Журнальный стол', exact: true })
+      .getByRole('button', {
+        name: sofa ? 'Диван «Мох»' : 'Журнальный стол',
+        exact: true,
+      })
       .click()
     await page.getByRole('button', { name: 'Переместить', exact: true }).click()
     await page.locator('.house-menu').evaluate((m) => {
@@ -140,7 +144,7 @@ try {
       const p = new Vector3(
         -2.7 + Math.sin(i * 1.7) * 0.7,
         0,
-        -0.2 + Math.cos(i * 2.1) * 0.55,
+        (sofa ? -2.2 : -0.2) + Math.cos(i * 2.1) * 0.55,
       ).project(camera)
       return {
         x: box.x + ((p.x + 1) * box.width) / 2,

@@ -17,6 +17,7 @@ import House from './House'
 import WorkTools, { type WorkTool } from './WorkTools'
 import { supportHeight, FLOOR_TOP } from './grounding'
 import Furniture from './Furniture'
+import { FurnitureAssets } from './FurnitureAssets'
 import Cleaning from './TrashScene'
 import DirtScene from './DirtScene'
 import PaintScene from './PaintScene'
@@ -802,7 +803,9 @@ export default function Scene(p: Props) {
       }
     >
       <VisualMaterials>
-        <Interior {...p} />
+        <FurnitureAssets>
+          <Interior {...p} />
+        </FurnitureAssets>
       </VisualMaterials>
     </Canvas>
   )

@@ -13,6 +13,7 @@ import {
 import type { Item, WorldItem } from './placement'
 import { partsOnSurface } from './furnitureGeometry'
 import LivingFurniture from './LivingFurniture'
+import { SofaAsset } from './FurnitureAssets'
 import BinModel from './BinModel'
 import {
   FLOOR_TOP,
@@ -214,6 +215,20 @@ function Model({
         />
       )
     case 'sofa':
+      return (
+        <SofaAsset
+          floor={surfaceY}
+          fallback={<LivingFurniture kind="sofa" floor={surfaceY} />}
+        >
+          {/** Keep the existing occupied throw-pillow volume and saved anchors. */}
+          <Box
+            p={[-0.7, 1, -0.2]}
+            s={[0.42, 0.42, 0.17]}
+            c="#e1d2b3"
+            radius={0.07}
+          />
+        </SofaAsset>
+      )
     case 'chair':
     case 'table':
       return <LivingFurniture kind={kind} floor={surfaceY} />
