@@ -74,4 +74,3 @@ view('isometric')
 scene.render.filepath = str(OUT / 'previews/glb-roundtrip.png')
 bpy.ops.render.render(write_still=True)
 print('ROUNDTRIP_PASSED', json.dumps(report), flush=True)
-

@@ -244,4 +244,3 @@ for name in (['isometric'] if draft else views):
     scene.render.filepath = str(OUT/'previews'/f'{name}.png')
     bpy.ops.render.render(write_still=True)
 print('SOFA_COMPLETE',flush=True)
-
