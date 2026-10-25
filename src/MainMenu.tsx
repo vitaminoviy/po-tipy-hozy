@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import './mainMenu.css'
-import MenuWorkshop from './MenuWorkshop'
+import MenuBlenderBackground from './MenuBlenderBackground'
 
 function Flourish() {
   return (
@@ -124,7 +124,7 @@ export default function MainMenu({
           onKeyDown={(e) => e.stopPropagation()}
         >
           <div className="menu-landscape" aria-hidden="true">
-            <MenuWorkshop motion={motion && !reduced && !backgroundPaused} />
+            <MenuBlenderBackground motion={motion && !reduced && !backgroundPaused} />
           </div>
           <div className="title-content">
             <p className="menu-eyebrow">A LITTLE PLACE TO BEGIN AGAIN</p>
