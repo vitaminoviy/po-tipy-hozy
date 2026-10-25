@@ -86,3 +86,48 @@ left 40%. No broad visible geometry faults found in the reviewed camera view.
 Animation, light changes across a loop and all-camera geometry are unverified.
 New plant roots are organized for future sway, not yet animated. Wait for artistic
 approval before animation or integration. Main and game code remain unchanged.
+
+## Reclaimed-room realism pass — 2026-10-25
+
+Continues the existing `quiet-home-overgrown-review.blend` from `4cf0a95`.
+New editable file: `quiet-home-reclaimed-review.blend`. It contains two cameras:
+
+- `Quiet Home review A - room and warmth`: lower oblique composition.
+- `Quiet Home review B - floor and history`: slightly higher, more frontal view.
+
+PNG outputs `quiet-home-reclaimed-A.png` and `quiet-home-reclaimed-B.png` are both
+1920×1080. Blender **5.2.3 LTS**, Cycles/OptiX, adaptive sampling up to 192 samples,
+threshold 0.025 and denoising. Both show frame 1; no animation sequence was rendered.
+
+Actual structural changes include three floor openings cut through 23 existing
+boards, splintered edges, visible joists and a lower subfloor. Part of the table's
+left corner and apron is absent; central bearers and a timber support retain a
+continuous surface under the miniature. The original house receives restrained
+paint wear, minor slate chips and slight joinery irregularity rather than collapse.
+
+The room adds layered worn plaster, dampness, fine angular cracks, an adjoining
+doorway and soft light on the left wall. 3,695 leaf instances use smoother veined,
+translucent blades. Added understory growth, roots and filament moss replace
+uniform decorative plants and polygonal moss lumps. Reference-game assets were
+not imported or copied. The miniature retains a visibly stylized design.
+
+The old fast box helper had inward face winding. The current pass repairs 353
+inherited closed meshes, including the atmosphere boundary; its helper is also
+corrected to prevent recurrence. Earlier saved blend files remain untouched.
+
+```powershell
+& 'D:/SteamLibrary/steamapps/common/Blender/blender.exe' -b -t 8 --python scripts/blender/refine_reclaimed_room.py
+& 'D:/SteamLibrary/steamapps/common/Blender/blender.exe' -b assets/menu/blender/quiet-home-reclaimed-review.blend --python scripts/blender/validate_reclaimed_review.py
+```
+
+`-- --preview` on the first command makes two half-size studies in artifacts while
+saving the blend with full-resolution settings. Each run opens the unchanged
+overgrown source, so refinements never accumulate on repeated runs. The `.blend1`
+is a previous local study, retained as a backup.
+
+`reclaimed-validation.json`: three downward floor probes clear; intact-floor
+control hits; five probes under the miniature hit the table surface; all 1,822
+closed meshes checked have nonnegative winding; atmosphere signed volume positive.
+The cottage stays within x≈55–78% in both cameras. These are selected geometric
+checks plus visual inspection of both PNGs, not an exhaustive collision sweep.
+Artistic approval and later animation checks remain pending. Main is unchanged.

@@ -36,7 +36,7 @@ def mesh_object(name,verts,faces,material):
 def box(name,loc,dim,m,bevel=.02,parent=None):
     x,y,z=[v/2 for v in dim]
     verts=[(-x,-y,-z),(-x,-y,z),(-x,y,-z),(-x,y,z),(x,-y,-z),(x,-y,z),(x,y,-z),(x,y,z)]
-    ob=mesh_object(name,verts,[(0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)],m)
+    ob=mesh_object(name,verts,[(2,6,4,0),(5,7,3,1),(4,5,1,0),(3,7,6,2),(1,3,2,0),(6,7,5,4)],m)
     ob.location=loc;ob.parent=parent
     if bevel:
         mod=ob.modifiers.new('Time softened edges','BEVEL');mod.width=bevel;mod.segments=2

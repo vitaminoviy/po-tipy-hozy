@@ -1,0 +1,51 @@
+{
+  "source_blend": "quiet-home-overgrown-review.blend",
+  "blender": "5.2.3 LTS",
+  "objects": 10174,
+  "frame": 1,
+  "animation_rendered": false,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "max_samples": 192,
+  "adaptive_threshold": 0.025,
+  "floor_openings": [
+    [
+      1.95,
+      -3.48,
+      1.35,
+      1.0
+    ],
+    [
+      6.35,
+      2.55,
+      1.35,
+      1.1
+    ],
+    [
+      -5.45,
+      2.2,
+      0.72,
+      0.84
+    ]
+  ],
+  "cut_original_boards": 23,
+  "replaced_leaf_meshes": 3695,
+  "closed_mesh_winding_repairs": 353,
+  "cameras": {
+    "Quiet Home review A - room and warmth": [
+      0.5570849776268005,
+      0.7744213342666626,
+      0.44899657368659973,
+      0.8106867074966431
+    ],
+    "Quiet Home review B - floor and history": [
+      0.5544903874397278,
+      0.7580972909927368,
+      0.45957547426223755,
+      0.8277033567428589
+    ]
+  },
+  "table_support": "Sound central bearers and replacement timber support; left corner absent."
+}

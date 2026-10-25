@@ -1,0 +1,51 @@
+{
+  "blender": "5.2.3 LTS",
+  "frame": 1,
+  "floor_opening_probes_clear": 3,
+  "intact_floor_control": true,
+  "miniature_table_support_probes": [
+    [
+      -1.28,
+      -1.04,
+      -1.909211277961731e-08
+    ],
+    [
+      1.28,
+      -1.04,
+      1.83936208486557e-07
+    ],
+    [
+      -1.28,
+      1.04,
+      4.675239324569702e-07
+    ],
+    [
+      1.28,
+      1.04,
+      1.8440186977386475e-07
+    ],
+    [
+      0,
+      0,
+      9.12696123123169e-08
+    ]
+  ],
+  "closed_meshes_checked": 1822,
+  "inward_closed_meshes": [],
+  "atmosphere_signed_volume": 1355.199966430664,
+  "camera_bounds": {
+    "Quiet Home review A - room and warmth": [
+      0.5570849776268005,
+      0.7744213342666626,
+      0.44899657368659973,
+      0.8106867074966431
+    ],
+    "Quiet Home review B - floor and history": [
+      0.5544903874397278,
+      0.7580972909927368,
+      0.45957547426223755,
+      0.8277033567428589
+    ]
+  },
+  "limits": "One frame, selected support probes and camera bounds; not a collision or animation sweep."
+}
