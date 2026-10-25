@@ -1,0 +1,22 @@
+{
+  "base": "quiet-home-workshop.blend",
+  "objects": 3224,
+  "slate_tiles": 264,
+  "minimum_slate_normal_offset": 0.034999966621398926,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "engine": "Cycles",
+  "rendered_frames": [
+    1
+  ],
+  "animation_review_pending": true,
+  "samples": 128,
+  "loop_endpoint_max_delta": 3.5352964844132456e-17,
+  "loop_animated_values": 1592,
+  "full_loop_rendered": false,
+  "cut_verge_slates": 48,
+  "camera": "Menu master camera",
+  "output": "D:\\codex\\po-tipy-hoze\\assets\\menu\\blender\\workshop-review.png"
+}
