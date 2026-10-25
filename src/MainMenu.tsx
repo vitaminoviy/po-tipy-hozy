@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import './mainMenu.css'
+import MenuWorkshop from './MenuWorkshop'
 
 function Flourish() {
   return (
@@ -29,6 +30,15 @@ export default function MainMenu({
     'settings' | 'credits' | 'exit' | 'new' | null
   >(null)
   const [motion, setMotion] = useState(true)
+  const [reduced, setReduced] = useState(
+    () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
+  useEffect(() => {
+    const media = matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => setReduced(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
   const [backgroundPaused, setBackgroundPaused] = useState(document.hidden)
   useEffect(() => {
     const update = () => setBackgroundPaused(document.hidden)
@@ -114,93 +124,7 @@ export default function MainMenu({
           onKeyDown={(e) => e.stopPropagation()}
         >
           <div className="menu-landscape" aria-hidden="true">
-            <svg
-              className="menu-living-scene"
-              viewBox="0 0 1672 941"
-              preserveAspectRatio="xMidYMid slice"
-            >
-              <defs>
-                <radialGradient id="window-warmth">
-                  <stop stopColor="#ffd28a" stopOpacity=".85" />
-                  <stop offset=".35" stopColor="#ffb849" stopOpacity=".3" />
-                  <stop offset="1" stopColor="#f5a748" stopOpacity="0" />
-                </radialGradient>
-                <linearGradient id="lamp-beam" x1="0" y1="0" x2="0" y2="1">
-                  <stop stopColor="#ffe4ad" stopOpacity=".18" />
-                  <stop offset="1" stopColor="#ffd295" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <image
-                href={`${import.meta.env.BASE_URL}images/workshop-cleanplate.webp`}
-                width="1672"
-                height="941"
-              />
-              <g className="menu-window-lights" fill="url(#window-warmth)">
-                {[
-                  [1015, 395, 72, 65],
-                  [1133, 414, 65, 65],
-                  [988, 544, 76, 80],
-                  [1112, 565, 80, 75],
-                  [1215, 577, 78, 80],
-                  [1060, 674, 66, 64],
-                  [647, 237, 55, 75],
-                  [1535, 327, 118, 70],
-                ].map(([cx, cy, rx, ry], i) => (
-                  <ellipse
-                    key={i}
-                    className="menu-window-glow"
-                    cx={cx}
-                    cy={cy}
-                    rx={rx}
-                    ry={ry}
-                    style={{
-                      animationDelay: `${-i * 1.7}s`,
-                      animationDuration: `12s`,
-                    }}
-                  />
-                ))}
-              </g>
-              <path
-                className="menu-lamp-beam"
-                d="M1470 325 L1580 342 L1665 735 Q1460 805 1340 690Z"
-                fill="url(#lamp-beam)"
-              />
-              {/* Transparent botanical layers: anchors stay fixed while each vine sways. */}
-              {[
-                [650, -30, 210, 380, 0, 0],
-                [780, -45, 230, 490, -2.4, 0],
-                [1010, -55, 170, 330, -5.1, 0],
-                [1130, -40, 155, 270, -7.6, 0],
-                [915, 280, 88, 190, -1.3, 38],
-                [890, 315, 72, 155, -6.2, 31],
-              ].map(([x, y, width, height, delay, angle], i) => (
-                <g key={i} transform={`translate(${x} ${y}) rotate(${angle})`}>
-                  <g
-                    className="menu-vine"
-                    style={{ animationDelay: `${delay}s` }}
-                  >
-                    <image
-                      href={`${import.meta.env.BASE_URL}images/workshop-ivy-alpha.webp`}
-                      x={-width / 2}
-                      width={width}
-                      height={height}
-                    />
-                  </g>
-                </g>
-              ))}
-            </svg>
-          </div>
-          <div className="menu-dust" aria-hidden="true">
-            {Array.from({ length: 15 }, (_, i) => (
-              <i
-                key={i}
-                style={{
-                  left: `${36 + ((i * 11) % 62)}%`,
-                  top: `${25 + ((i * 13) % 60)}%`,
-                  animationDelay: `${-i * 2}s`,
-                }}
-              />
-            ))}
+            <MenuWorkshop motion={motion && !reduced && !backgroundPaused} />
           </div>
           <div className="title-content">
             <p className="menu-eyebrow">A LITTLE PLACE TO BEGIN AGAIN</p>
@@ -238,7 +162,7 @@ export default function MainMenu({
                 ? 'Открываем ваш дом…'
                 : !available && !error
                   ? 'Проверяем сохранение…'
-                  : 'Немного заботы. Немного тепла. Ваш тихий дом.'}
+                  : ''}
             </p>
             {error && (
               <p className="menu-error" role="alert">
@@ -284,16 +208,46 @@ export default function MainMenu({
                 </>
               ) : panel === 'credits' ? (
                 <>
-                  <p>«Тихий дом» — игра о заботе, восстановлении и уюте.</p>
                   <p>
-                    Автор проекта — vitaminoviy.
-                    <br />
-                    Разработка — совместно с OpenAI Codex.
+                    Маленькие дома. Бережный ремонт. Уют, который вы создаёте
+                    сами.
                   </p>
                   <p>
-                    Фон подготовлен по предоставленному автором референсу с
-                    помощью генеративного редактирования.
+                    Автор проекта — <strong>@californiaby</strong>
                   </p>
+                  <div
+                    className="menu-history"
+                    tabIndex={0}
+                    aria-label="История обновлений"
+                  >
+                    <h3>История обновлений</h3>
+                    <h4>Visual 1.1.4 · Главное меню</h4>
+                    <p>
+                      Новая вечерняя мастерская: миниатюрный дом, живые растения
+                      и тёплый свет. Продолжить ремонт можно прямо из меню.
+                    </p>
+                    <h4>Visual 1.1.4 · Мебель</h4>
+                    <p>
+                      В гостиной появился мягкий диван, созданный в Blender. Его
+                      можно свободно перемещать и поворачивать.
+                    </p>
+                    <h4>Visual Foundation 1.0</h4>
+                    <p>
+                      Дом стал уютнее: обновлены материалы, свет, мебель и
+                      площадка инструментов.
+                    </p>
+                    <h4>Prototype 0.9</h4>
+                    <p>
+                      Проверены устойчивость игры и плавность работы,
+                      подготовлена основа для визуальных обновлений.
+                    </p>
+                    <h4>Prototype 0.8</h4>
+                    <p>
+                      Результаты ремонта сохраняются: мебель, чистые полы,
+                      покрашенные стены и выбранные покрытия дождутся вашего
+                      возвращения.
+                    </p>
+                  </div>
                 </>
               ) : panel === 'new' ? (
                 <p>

@@ -34,14 +34,14 @@ test('menu, decoration, panels, new game, persisted continue and reset confirmat
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Credits', exact: true }).click()
-  await expect(page.getByRole('dialog')).toContainText('vitaminoviy')
+  await expect(page.getByRole('dialog')).toContainText('@californiaby')
   await page.getByRole('button', { name: 'Back to menu' }).click()
   await page.getByRole('button', { name: 'Exit', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('закройте эту вкладку')
   await page.getByRole('button', { name: 'Back to menu' }).click()
   await start.click()
   await expect(menu).toHaveCount(0, { timeout: 15000 })
-  await expect(page.locator('canvas')).toHaveAttribute(
+  await expect(page.locator('canvas[data-furniture-assets]')).toHaveAttribute(
     'data-scene-ready',
     'true',
   )
@@ -118,7 +118,7 @@ test('reduced motion and slow GLB retain menu until scene readiness', async ({
     ).toBe('none')
     await page.getByRole('button', { name: 'New Game', exact: true }).click()
     await expect(page.getByText('Открываем ваш дом…')).toBeVisible()
-    await expect(page.locator('canvas')).toHaveAttribute(
+    await expect(page.locator('canvas[data-furniture-assets]')).toHaveAttribute(
       'data-furniture-assets',
       'loading',
     )
@@ -176,73 +176,41 @@ test('failed New Game preserves the existing save and Continue never overwrites 
   expect(await read()).toBe(before)
 })
 
-test('living layers move independently and stop with reduced motion', async ({
+test('3D menu animates and stops for reduced motion and Settings', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const scene = page.locator('canvas[data-menu-scene="ready"]')
+  await expect(scene).toBeVisible()
+  const a = await scene.getAttribute('data-scene-phase')
+  await page.waitForTimeout(500)
+  expect(await scene.getAttribute('data-scene-phase')).not.toBe(a)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(scene).toHaveAttribute('data-motion', 'false')
+  await page.waitForTimeout(200)
+  const b = await scene.getAttribute('data-scene-phase')
+  await page.waitForTimeout(500)
+  expect(await scene.getAttribute('data-scene-phase')).toBe(b)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('checkbox').uncheck()
+  await expect(scene).toHaveAttribute('data-motion', 'false')
+})
+test('Credits contains real history and no obsolete attribution or slogan', async ({
   page,
 }) => {
   await page.goto('/')
   await expect(
-    page.getByRole('button', { name: 'New Game', exact: true }),
-  ).toBeEnabled()
-  const sample = () =>
-    page.evaluate(() =>
-      [
-        '.menu-window-glow',
-        '.menu-lamp-beam',
-        '.menu-vine',
-        '.menu-dust i',
-      ].map((s) => {
-        const e = document.querySelector(s)!
-        const c = getComputedStyle(e)
-        return [c.opacity, c.transform]
-      }),
-    )
-  const first = await sample()
-  await page.waitForTimeout(1700)
-  const second = await sample()
-  for (let i = 0; i < first.length; i++) expect(second[i]).not.toEqual(first[i])
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  expect(
-    await page
-      .locator('.main-menu')
-      .evaluate(
-        (e) =>
-          e
-            .getAnimations({ subtree: true })
-            .filter((a) => a.playState === 'running').length,
-      ),
-  ).toBe(0)
-})
-
-test('botanical layers have independent phases and a seamless twelve-second cycle', async ({
-  page,
-}) => {
-  await page.goto('/')
-  await expect(page.locator('.menu-vine')).toHaveCount(6)
-  const result = await page.locator('.menu-landscape').evaluate((root) => {
-    const animations = root.getAnimations({ subtree: true })
-    animations.forEach((a) => a.pause())
-    const sample = (time: number) => {
-      animations.forEach((a) => {
-        a.currentTime = time
-      })
-      return Array.from(
-        root.querySelectorAll('.menu-vine, .menu-window-glow, .menu-lamp-beam'),
-      ).map((e) => {
-        const c = getComputedStyle(e)
-        return `${c.transform}/${c.opacity}`
-      })
-    }
-    return { start: sample(0), middle: sample(3000), end: sample(12000) }
+    page.getByText('Немного заботы. Немного тепла. Ваш тихий дом.'),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Credits', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('@californiaby')
+  await expect(page.getByRole('dialog')).not.toContainText('OpenAI Codex')
+  const history = page.getByLabel('История обновлений')
+  await history.evaluate((e) => {
+    e.scrollTop = e.scrollHeight
   })
-  expect(result.end).toEqual(result.start)
-  expect(result.middle).not.toEqual(result.start)
-  expect(new Set(result.start.slice(-6)).size).toBeGreaterThan(3)
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('checkbox').uncheck()
-  expect(
-    await page
-      .locator('.menu-vine')
-      .first()
-      .evaluate((e) => getComputedStyle(e).animationName),
-  ).toBe('none')
+  expect(await history.evaluate((e) => e.scrollTop)).toBeGreaterThan(0)
+  await page.getByRole('button', { name: 'Back to menu' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })

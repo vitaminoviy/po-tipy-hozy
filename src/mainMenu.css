@@ -524,3 +524,34 @@
 .menu-vine image {
   filter: brightness(0.78) saturate(0.78);
 }
+.menu-landscape {
+  inset: 0;
+}
+.menu-caption:empty {
+  display: none;
+}
+.menu-history {
+  max-height: min(36vh, 300px);
+  overflow-y: auto;
+  padding-right: 16px;
+  scrollbar-color: #aa9068 #242322;
+}
+.menu-history h3 {
+  font-weight: normal;
+  font-size: 23px;
+}
+.menu-history h4 {
+  color: #ddc69e;
+  margin: 24px 0 5px;
+  font:
+    14px Georgia,
+    serif;
+}
+.menu-history p {
+  margin-top: 6px;
+}
+.menu-scene-fallback {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 75% 60%, #805b42, #20232f 65%);
+}
