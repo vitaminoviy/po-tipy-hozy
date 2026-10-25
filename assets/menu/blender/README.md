@@ -51,3 +51,38 @@ Only frame 1 is rendered. The original 240-frame / 24fps plant and lighting driv
 remain a starting point. Artistic approval, refined-scene loop validation, motion
 amplitudes, camera motion and render budget must be reviewed before animation.
 No full animation has been rendered in this task.
+
+## Overgrown room — 2026-10-25
+
+Current artistic review: `quiet-home-overgrown-review.png`, **1920×1080**,
+Cycles / OptiX, 160 samples. Editable scene: `quiet-home-overgrown-review.blend`.
+The `.blend1` beside it preserves the preceding light study.
+
+This continues `quiet-home-workshop-review.blend`: 863 existing root objects,
+including the cottage, its 312 roof tiles, joinery, window boxes and desk props,
+are retained and transformed together onto a separate tilted table. Previous
+masters and renders are untouched. The room is an original Quiet Home design;
+the user's reference was used only for mood, with no imported pixels, characters,
+scene assets, typography or recognizable props from the referenced game.
+
+The new room has aged floorboards, exposed masonry and plaster, a damaged tall
+window, a partly open table drawer, an abandoned chair, hanging ivy, floor ferns,
+moss and creeping plants. A cool garden, natural window light and thin volumetric
+air contrast with warm miniature windows. The left wall remains quiet for UI;
+the cottage occupies approximately x=55–77% of the frame. No text is baked in.
+
+```powershell
+& 'D:/SteamLibrary/steamapps/common/Blender/blender.exe' -b -t 8 --python scripts/blender/create_overgrown_menu.py
+```
+
+Optional `-- --preview` renders only a 960×540 / 32-sample study into
+`artifacts/menu/blender/overgrown-preview.png`; the saved blend still has the final
+1920×1080 / 160-sample settings. The script always starts from the existing review
+master, so repeated runs do not accumulate additions. It renders frame 1 only.
+
+Validation: PNG dimensions checked; final blend reopened successfully; 7,524
+objects and 312 original roof tiles confirmed; cottage projection clears the
+left 40%. No broad visible geometry faults found in the reviewed camera view.
+Animation, light changes across a loop and all-camera geometry are unverified.
+New plant roots are organized for future sway, not yet animated. Wait for artistic
+approval before animation or integration. Main and game code remain unchanged.

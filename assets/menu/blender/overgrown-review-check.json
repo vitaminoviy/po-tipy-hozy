@@ -1,0 +1,23 @@
+{
+  "source_blend": "quiet-home-workshop-review.blend",
+  "preserved_root_objects": 863,
+  "objects": 7524,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "frames_rendered": [
+    1
+  ],
+  "engine": "Cycles",
+  "samples": 160,
+  "animation_rendered": false,
+  "menu_zone": "left ~35%, no baked text",
+  "seed": 251026,
+  "cottage_screen_bounds": [
+    0.5513904094696045,
+    0.7668979167938232,
+    0.3705753684043884,
+    0.7334582805633545
+  ]
+}
