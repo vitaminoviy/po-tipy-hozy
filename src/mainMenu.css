@@ -486,3 +486,41 @@
     padding: 26px;
   }
 }
+/* Botanical layers use a shared twelve-second loop with independent phases.
+   Their attachment points stay fixed; the cleanplate contains no duplicate vines. */
+.menu-landscape {
+  animation: none;
+}
+.menu-vine {
+  animation: menu-botanical-sway 12s ease-in-out infinite;
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+@keyframes menu-botanical-sway {
+  0%,
+  100% {
+    transform: rotate(-3deg) skewX(-0.5deg);
+  }
+  25% {
+    transform: rotate(1deg) skewX(0.4deg);
+  }
+  50% {
+    transform: rotate(3deg) skewX(0.7deg);
+  }
+  75% {
+    transform: rotate(-0.5deg) skewX(-0.2deg);
+  }
+}
+.menu-lamp-beam {
+  animation: menu-lamplight 6s ease-in-out infinite alternate;
+}
+.menu-dust i,
+.menu-dust i:nth-child(3n) {
+  animation-duration: 12s;
+}
+.main-menu[data-background-paused='true'] * {
+  animation-play-state: paused !important;
+}
+.menu-vine image {
+  filter: brightness(0.78) saturate(0.78);
+}

@@ -189,7 +189,6 @@ test('living layers move independently and stop with reduced motion', async ({
         '.menu-window-glow',
         '.menu-lamp-beam',
         '.menu-vine',
-        '.menu-landscape',
         '.menu-dust i',
       ].map((s) => {
         const e = document.querySelector(s)!
@@ -212,4 +211,38 @@ test('living layers move independently and stop with reduced motion', async ({
             .filter((a) => a.playState === 'running').length,
       ),
   ).toBe(0)
+})
+
+test('botanical layers have independent phases and a seamless twelve-second cycle', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('.menu-vine')).toHaveCount(6)
+  const result = await page.locator('.menu-landscape').evaluate((root) => {
+    const animations = root.getAnimations({ subtree: true })
+    animations.forEach((a) => a.pause())
+    const sample = (time: number) => {
+      animations.forEach((a) => {
+        a.currentTime = time
+      })
+      return Array.from(
+        root.querySelectorAll('.menu-vine, .menu-window-glow, .menu-lamp-beam'),
+      ).map((e) => {
+        const c = getComputedStyle(e)
+        return `${c.transform}/${c.opacity}`
+      })
+    }
+    return { start: sample(0), middle: sample(3000), end: sample(12000) }
+  })
+  expect(result.end).toEqual(result.start)
+  expect(result.middle).not.toEqual(result.start)
+  expect(new Set(result.start.slice(-6)).size).toBeGreaterThan(3)
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('checkbox').uncheck()
+  expect(
+    await page
+      .locator('.menu-vine')
+      .first()
+      .evaluate((e) => getComputedStyle(e).animationName),
+  ).toBe('none')
 })

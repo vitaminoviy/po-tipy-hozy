@@ -29,6 +29,12 @@ export default function MainMenu({
     'settings' | 'credits' | 'exit' | 'new' | null
   >(null)
   const [motion, setMotion] = useState(true)
+  const [backgroundPaused, setBackgroundPaused] = useState(document.hidden)
+  useEffect(() => {
+    const update = () => setBackgroundPaused(document.hidden)
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
   const world = useRef<HTMLDivElement>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const busy = useRef(false)
@@ -104,6 +110,7 @@ export default function MainMenu({
           aria-label="Главное меню"
           data-leaving={ready}
           data-motion={motion}
+          data-background-paused={backgroundPaused}
           onKeyDown={(e) => e.stopPropagation()}
         >
           <div className="menu-landscape" aria-hidden="true">
@@ -124,7 +131,7 @@ export default function MainMenu({
                 </linearGradient>
               </defs>
               <image
-                href={`${import.meta.env.BASE_URL}images/workshop-menu.png`}
+                href={`${import.meta.env.BASE_URL}images/workshop-cleanplate.webp`}
                 width="1672"
                 height="941"
               />
@@ -148,7 +155,7 @@ export default function MainMenu({
                     ry={ry}
                     style={{
                       animationDelay: `${-i * 1.7}s`,
-                      animationDuration: `${6 + i * 0.8}s`,
+                      animationDuration: `12s`,
                     }}
                   />
                 ))}
@@ -158,29 +165,29 @@ export default function MainMenu({
                 d="M1470 325 L1580 342 L1665 735 Q1460 805 1340 690Z"
                 fill="url(#lamp-beam)"
               />
-              <g
-                className="menu-vines"
-                fill="#222719"
-                stroke="#33371e"
-                strokeWidth="2"
-              >
-                {[0, 1, 2].map((i) => (
-                  <g key={i} transform={`translate(${740 + i * 100} 0)`}>
-                    <g
-                      className="menu-vine"
-                      style={{
-                        animationDelay: `${-i * 3}s`,
-                      }}
-                    >
-                      <path
-                        d="M0 -15 Q-20 40 4 85 Q20 115 -2 150"
-                        fill="none"
-                      />
-                      <path d="M-4 25Q-45 4 -35 35Q-21 52 -4 25M-1 50Q35 18 29 50Q23 70 -1 50M5 85Q-27 60 -30 87Q-16 109 5 85M8 105Q43 83 35 113Q20 131 8 105M0 139Q-24 118 -22 144Q-10 160 0 139" />
-                    </g>
+              {/* Transparent botanical layers: anchors stay fixed while each vine sways. */}
+              {[
+                [650, -30, 210, 380, 0, 0],
+                [780, -45, 230, 490, -2.4, 0],
+                [1010, -55, 170, 330, -5.1, 0],
+                [1130, -40, 155, 270, -7.6, 0],
+                [915, 280, 88, 190, -1.3, 38],
+                [890, 315, 72, 155, -6.2, 31],
+              ].map(([x, y, width, height, delay, angle], i) => (
+                <g key={i} transform={`translate(${x} ${y}) rotate(${angle})`}>
+                  <g
+                    className="menu-vine"
+                    style={{ animationDelay: `${delay}s` }}
+                  >
+                    <image
+                      href={`${import.meta.env.BASE_URL}images/workshop-ivy-alpha.webp`}
+                      x={-width / 2}
+                      width={width}
+                      height={height}
+                    />
                   </g>
-                ))}
-              </g>
+                </g>
+              ))}
             </svg>
           </div>
           <div className="menu-dust" aria-hidden="true">
